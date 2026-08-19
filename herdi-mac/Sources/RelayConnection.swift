@@ -511,12 +511,21 @@ final class RelayConnection {
                 let editor = readPaneRecent(paneId, remote: remote, lines: 40)
                 if editor.contains("Enter your response:")
                     || (editor.contains("Custom answer:") && editor.lowercased().contains("submit")) {
+                    // Type the custom text into the editor.
                     if remote == nil {
                         _ = runHerdrRaw(["pane", "send-text", paneId, text])
-                        _ = runHerdrKeys(paneId: paneId, remote: remote, ["Enter"])
                     } else {
                         _ = runSSH(remote!, "herdr", "pane", "send-text", paneId, text)
-                        _ = runSSH(remote!, "herdr", "pane", "send-keys", paneId, "Enter")
+                    }
+                    // Submit. Single-select: Enter commits the custom answer.
+                    // Multi-select: the editor's Enter only confirms the text, so
+                    // exit back to the dialog (Esc), move the cursor off "Other"
+                    // onto a regular option (Up), then Enter submits the checked
+                    // boxes together with the custom answer.
+                    if question.isMultiSelect {
+                        _ = runHerdrKeys(paneId: paneId, remote: remote, ["esc", "Up", "Enter"])
+                    } else {
+                        _ = runHerdrKeys(paneId: paneId, remote: remote, ["Enter"])
                     }
                     return
                 }
