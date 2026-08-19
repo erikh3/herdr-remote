@@ -531,16 +531,18 @@ final class RelayConnection {
                     _ = runHerdrKeys(paneId: paneId, remote: remote, ["Enter"])
                     guard question.isMultiSelect else { return }
                     // Multi-select: the first Enter only confirms the custom text
-                    // into "Other" and returns to the dialog with all boxes still
-                    // staged. A second Enter submits the whole dialog. Wait for
-                    // the dialog (not the editor) before sending it.
+                    // into "Other" and returns to the dialog with the cursor still
+                    // on "Other" (where Enter would RE-OPEN the editor). Move Up
+                    // onto a regular option, then Enter submits the whole dialog
+                    // (checked boxes + the custom answer). Wait for the dialog
+                    // (not the editor) before driving it.
                     let submitDeadline = Date().addingTimeInterval(1.5)
                     while Date() < submitDeadline {
                         let dialog = readPaneRecent(paneId, remote: remote, lines: 40)
                         let inEditor = dialog.contains("Enter your response:")
                             || (dialog.contains("Custom answer:") && dialog.lowercased().contains("submit"))
                         if !inEditor, dialog.contains("Space toggle") || dialog.contains("Enter submit") {
-                            _ = runHerdrKeys(paneId: paneId, remote: remote, ["Enter"])
+                            _ = runHerdrKeys(paneId: paneId, remote: remote, ["Up", "Enter"])
                             return
                         }
                         Thread.sleep(forTimeInterval: 0.05)
