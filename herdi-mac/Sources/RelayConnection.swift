@@ -343,9 +343,11 @@ final class RelayConnection {
                 }
                 return
             }
-            // If this pane is currently a detected question, navigate by cursor;
-            // otherwise send literal text (permission prompts, free-form).
-            if agent.promptId != nil, (agent.options?.isEmpty == false) {
+            // A detected omp question (single or multi-select) navigates by
+            // cursor: single-select selects the matching option, multi-select
+            // delivers custom text via the "Other" option which submits the
+            // already-toggled checkboxes together.
+            if agent.isQuestion, agent.promptId != nil {
                 directRespondToQuestion(agent: agent, text: response.text)
             } else {
                 let remote = agent.host == "local" ? nil : agent.host
