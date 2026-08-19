@@ -740,7 +740,7 @@ private struct ResponseButtonGrid: View {
             // Vertical list: question options can be long and numerous.
             VStack(spacing: 6) {
                 ForEach(buttons) { btn in
-                    ResponseButton(action: btn) { onRespond(btn.rawValue) }
+                    ResponseButton(action: btn, alignment: .leading) { onRespond(btn.rawValue) }
                 }
             }
         } else {
@@ -809,6 +809,7 @@ private struct ResponseAction: Identifiable {
 
 private struct ResponseButton: View {
     let action: ResponseAction
+    var alignment: Alignment = .center
     let onTap: () -> Void
     @State private var hovered = false
     @State private var pressed = false
@@ -834,8 +835,9 @@ private struct ResponseButton: View {
             }
             .foregroundStyle(hovered ? .white : action.tint)
             .padding(.horizontal, 12)
+            .padding(.leading, alignment == .leading ? 8 : 0)
             .padding(.vertical, 8)
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, alignment: alignment)
             .background(
                 RoundedRectangle(cornerRadius: 8)
                     .fill(hovered ? action.tint.opacity(0.25) : action.tint.opacity(0.08))
