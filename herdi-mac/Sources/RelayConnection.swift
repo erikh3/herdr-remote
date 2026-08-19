@@ -346,6 +346,7 @@ final class RelayConnection {
                     agent.questionTotal = total
                     agent.optionDescriptions = descriptions
                     agent.form = nil
+                    agent.isMultiSelect = question.isMultiSelect
                     if question.isMultiSelect {
                         agent.options = nil
                         agent.multiOptions = visible
