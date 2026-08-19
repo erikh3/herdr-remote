@@ -97,5 +97,32 @@ expect(QuestionParser.detectApprovalOptions("nothing here") == [],
 expect(QuestionParser.detectOptions("please respond: yes, single permission") == ["yes, single permission", "trust, always allow", "no (tab to edit)"],
        "detectOptions short-circuits to approval options")
 
+// --- live fixtures captured from real omp panes (skip gracefully if absent) ---
+func loadFixture(_ name: String) -> String? {
+    try? String(contentsOfFile: "herdi-mac/Tests/fixtures/\(name)", encoding: .utf8)
+}
+if let single = loadFixture("live_single.txt") {
+    let lq = QuestionParser.detectQuestion(single)
+    expect(lq != nil, "live_single parsed as question")
+    expect(lq?.text == "Which color?", "live_single question text")
+    expect(lq?.options.map { $0.label } == ["Red", "Blue", "Green", "Other (type your own)"],
+           "live_single option labels")
+    expect(lq?.isMultiSelect == false, "live_single is single-select")
+    expect(QuestionParser.detectOptions(single) == ["Red", "Blue", "Green"],
+           "live_single detectOptions drops Other")
+} else {
+    print("skip: live_single.txt not captured")
+}
+if let multi = loadFixture("live_multi.txt") {
+    let lq = QuestionParser.detectQuestion(multi)
+    expect(lq != nil, "live_multi parsed as question")
+    expect(lq?.text == "Which capabilities?", "live_multi question text")
+    expect(lq?.isMultiSelect == true, "live_multi is multi-select")
+    expect(QuestionParser.detectOptions(multi) == ["Color output", "Nerd Font", "Mobile layout"],
+           "live_multi detectOptions drops Other")
+} else {
+    print("skip: live_multi.txt not captured")
+}
+
 if failures > 0 { FileHandle.standardError.write(Data("\(failures) failure(s)\n".utf8)); exit(1) }
 print("ALL PASS")
