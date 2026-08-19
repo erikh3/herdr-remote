@@ -74,5 +74,28 @@ expect(QuestionParser.promptId(paneId: "p1", content: colorQ)
 expect(!QuestionParser.promptId(paneId: "p1", content: "random blocked prompt").isEmpty,
        "promptId non-question fallback non-empty")
 
+// --- Finding 1: golden-hash parity with Python relay ---
+expect(QuestionParser.promptId(paneId: "p1", content: ASK_SCREEN) == "8ea5fa454ba901c75027",
+       "promptId matches Python golden hash for ASK_SCREEN")
+expect(QuestionParser.promptId(paneId: "p1", content: "random blocked prompt") == "fbd2cd6c2ceef9f14daa",
+       "promptId matches Python golden hash for non-question fallback")
+
+// --- Finding 2: CRLF regression ---
+let ASK_CRLF = ASK_SCREEN.replacingOccurrences(of: "\n", with: "\r\n")
+expect(QuestionParser.detectQuestion(ASK_CRLF)?.options.map { $0.label } == ["Red", "Blue", "Green", "Other (type your own)"],
+       "CRLF input yields clean labels (no trailing CR)")
+expect(QuestionParser.promptId(paneId: "p1", content: ASK_CRLF) == "8ea5fa454ba901c75027",
+       "CRLF input yields same promptId as LF")
+
+// --- Finding 3: approval-option path ---
+expect(QuestionParser.detectApprovalOptions("... yes, single permission ...") == ["yes, single permission", "trust, always allow", "no (tab to edit)"],
+       "detectApprovalOptions recognizes tool permission")
+expect(QuestionParser.detectApprovalOptions("... approve all pending ...") == ["approve all pending", "configure individually", "exit (cancel subagents)"],
+       "detectApprovalOptions recognizes subagent approval")
+expect(QuestionParser.detectApprovalOptions("nothing here") == [],
+       "detectApprovalOptions returns empty when no trigger")
+expect(QuestionParser.detectOptions("please respond: yes, single permission") == ["yes, single permission", "trust, always allow", "no (tab to edit)"],
+       "detectOptions short-circuits to approval options")
+
 if failures > 0 { FileHandle.standardError.write(Data("\(failures) failure(s)\n".utf8)); exit(1) }
 print("ALL PASS")

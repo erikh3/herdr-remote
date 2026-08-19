@@ -32,9 +32,9 @@ enum QuestionParser {
     /// Strip box gutters and whitespace, matching Python's
     /// `line.strip().strip("\u2502|").strip()`.
     private static func normalize(_ raw: String) -> String {
-        raw.trimmingCharacters(in: .whitespaces)
+        raw.trimmingCharacters(in: .whitespacesAndNewlines)
            .trimmingCharacters(in: CharacterSet(charactersIn: "\u{2502}|"))
-           .trimmingCharacters(in: .whitespaces)
+           .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private struct OptionMatch { let cursor: Bool; let marker: String; let label: String }
@@ -71,7 +71,7 @@ enum QuestionParser {
 
         guard i < chars.count, chars[i] == " " else { return nil }
         while i < chars.count, chars[i] == " " { i += 1 }
-        let label = String(chars[i...]).trimmingCharacters(in: .whitespaces)
+        let label = String(chars[i...]).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !label.isEmpty else { return nil }
         return OptionMatch(cursor: cursor, marker: marker, label: label)
     }
