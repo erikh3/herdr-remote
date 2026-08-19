@@ -701,6 +701,12 @@ private struct ApprovalCard: View {
     }
 
     private func submit(promptId: String) {
+        // Non-empty custom text: deliver it (with the already-toggled boxes)
+        // through the Other-option flow, same as pressing Enter in the field.
+        if !customResponse.isEmpty {
+            respond(customResponse)
+            return
+        }
         relay.submitQuestion(paneId: agent.id, promptId: promptId)
         agent.status = .working
         agent.prompt = nil
