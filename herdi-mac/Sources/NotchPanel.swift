@@ -258,7 +258,9 @@ final class PanelWindowController: NSObject, NSWindowDelegate, ObservableObject 
     }
 
     private func panelSize(for screen: NSScreen) -> NSSize {
-        let maxH: CGFloat = 420
+        // Tall enough for the largest approval card (multi-question form: header
+        // + 320pt scroll + submit + paddings), bounded to the visible screen.
+        let maxH = min(560, screen.frame.height - 40)
         let width = min(580, screen.frame.width - 40)
         return NSSize(width: width, height: maxH)
     }
