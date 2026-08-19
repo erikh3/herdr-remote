@@ -220,33 +220,62 @@ final class RelayConnection {
         DispatchQueue.global(qos: .utility).async { [self] in
             let raw: String
             if let remote {
-                raw = runSSH(remote, "herdr", "pane", "read", paneId, "--lines", "20", "--source", "recent")
+                raw = runSSH(remote, "herdr", "pane", "read", paneId, "--lines", "100", "--source", "recent")
             } else {
-                raw = runHerdr("pane", "read", paneId, "--lines", "20", "--source", "recent")
+                raw = runHerdr("pane", "read", paneId, "--lines", "100", "--source", "recent")
             }
-            let lines = raw.components(separatedBy: .newlines)
+
+            let question = QuestionParser.detectQuestion(raw)
+            let promptId = QuestionParser.promptId(paneId: agent.id, content: raw)
+
+            if let question {
+                let visible = question.options
+                    .map { $0.label }
+                    .filter { $0 != QuestionParser.questionOther && !$0.contains("Done selecting") }
+                let checked = question.options
+                    .filter { $0.multi && $0.checked && $0.label != QuestionParser.questionOther
+                              && !$0.label.contains("Done selecting") }
+                    .map { $0.label }
+                let displayPrompt = question.text.isEmpty ? "(question)" : question.text
+
+                DispatchQueue.main.async {
+                    agent.prompt = displayPrompt
+                    agent.promptId = promptId
+                    agent.isMultiSelect = question.isMultiSelect
+                    if question.isMultiSelect {
+                        agent.options = nil
+                        agent.multiOptions = visible
+                        agent.selectedOptions = checked
+                    } else {
+                        agent.options = visible
+                        agent.multiOptions = []
+                        agent.selectedOptions = []
+                    }
+                    self.sendNotification(agent: agent.name, project: agent.project)
+                }
+                return
+            }
+
+            // Not an omp question: permission prompt or free-form. Fall back to
+            // approval-option detection over the last lines of pane output.
+            let approval = QuestionParser.detectApprovalOptions(raw)
+            let tail = raw.components(separatedBy: .newlines)
                 .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
                 .suffix(6)
-            let content = lines.joined(separator: "\n")
-            let options = detectOptions(content)
+                .joined(separator: "\n")
 
             DispatchQueue.main.async {
-                agent.prompt = String(content.prefix(500))
-                agent.options = options
+                agent.prompt = String(tail.prefix(500))
+                agent.promptId = promptId
+                agent.isMultiSelect = false
+                agent.multiOptions = []
+                agent.selectedOptions = []
+                agent.options = approval.isEmpty
+                    ? QuestionParser.toolOptions
+                    : approval
                 self.sendNotification(agent: agent.name, project: agent.project)
             }
         }
-    }
-
-    private func detectOptions(_ text: String) -> [String] {
-        let lower = text.lowercased()
-        if lower.contains("yes, single permission") {
-            return ["yes, single permission", "trust, always allow", "no (tab to edit)"]
-        }
-        if lower.contains("approve all pending") {
-            return ["approve all pending", "configure individually", "exit (cancel subagents)"]
-        }
-        return ["yes, single permission", "trust, always allow", "no (tab to edit)"]
     }
 
     private func runHerdr(_ args: String...) -> String {
