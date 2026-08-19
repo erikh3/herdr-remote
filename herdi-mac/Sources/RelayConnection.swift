@@ -318,17 +318,28 @@ final class RelayConnection {
 
     func send(response: ResponseMessage) {
         if mode == .direct {
-            DispatchQueue.global(qos: .userInitiated).async { [self] in
-                let paneId = response.pane_id
-                // Check if this is a remote agent (id starts with "host:")
-                if let agent = agents.first(where: { $0.id == paneId }), agent.host != "local" {
-                    let realId = String(paneId.drop(while: { $0 != ":" }).dropFirst())
-                    _ = runSSH(agent.host, "herdr", "pane", "send-text", realId, response.text + "\n")
-                } else {
-                    _ = runHerdr("pane", "send-text", paneId, response.text + "\n")
+            let paneId = response.pane_id
+            guard let agent = agents.first(where: { $0.id == paneId }) else {
+                DispatchQueue.global(qos: .userInitiated).async { [self] in
+                    _ = runHerdrRaw(["pane", "send-text", paneId, response.text + "\n"])
+                }
+                return
+            }
+            // If this pane is currently a detected question, navigate by cursor;
+            // otherwise send literal text (permission prompts, free-form).
+            if agent.promptId != nil, (agent.options?.isEmpty == false) {
+                directRespondToQuestion(agent: agent, text: response.text)
+            } else {
+                DispatchQueue.global(qos: .userInitiated).async { [self] in
+                    let remote = agent.host == "local" ? nil : agent.host
+                    if let remote {
+                        let realId = String(paneId.drop(while: { $0 != ":" }).dropFirst())
+                        _ = runSSH(remote, "herdr", "pane", "send-text", realId, response.text + "\n")
+                    } else {
+                        _ = runHerdrRaw(["pane", "send-text", paneId, response.text + "\n"])
+                    }
                 }
             }
-
         } else {
             guard let data = try? JSONEncoder().encode(response) else { return }
             task?.send(.string(String(data: data, encoding: .utf8)!)) { _ in }
@@ -373,6 +384,86 @@ final class RelayConnection {
     func interruptPane(_ paneId: String) {
         DispatchQueue.global(qos: .userInitiated).async { [self] in
             _ = runHerdr("pane", "send-keys", paneId, "Ctrl+c")
+        }
+    }
+
+    private func runHerdrKeys(paneId: String, remote: String?, _ keys: [String]) -> Bool {
+        guard !keys.isEmpty else { return true }
+        let output: String
+        if let remote {
+            output = runSSH(remote, "herdr", "pane", "send-keys", paneId, keys.joined(separator: " "))
+        } else {
+            output = runHerdrRaw(["pane", "send-keys", paneId] + keys)
+        }
+        return !output.contains("\"error\"")
+    }
+
+    /// runHerdr variant taking an array (existing runHerdr is variadic).
+    private func runHerdrRaw(_ args: [String]) -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: herdrPath)
+        process.arguments = args
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+            process.waitUntilExit()
+            return String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        } catch { return "" }
+    }
+
+    /// Cursor-navigation response, ported from respond_to_question
+    /// (relay/herdr_relay.py:569-603). Runs off the main thread.
+    private func directRespondToQuestion(agent: Agent, text: String) {
+        DispatchQueue.global(qos: .userInitiated).async { [self] in
+            let remote = agent.host == "local" ? nil : agent.host
+            let paneId = remote == nil ? agent.id
+                : String(agent.id.drop(while: { $0 != ":" }).dropFirst())
+            let raw = remote == nil
+                ? runHerdr("pane", "read", paneId, "--lines", "100", "--source", "recent")
+                : runSSH(remote!, "herdr", "pane", "read", paneId, "--lines", "100", "--source", "recent")
+            guard let question = QuestionParser.detectQuestion(raw) else {
+                // Fallback: type the text + Enter (permission / free-form).
+                _ = runHerdrKeys(paneId: paneId, remote: remote, [])
+                if remote == nil {
+                    _ = runHerdrRaw(["pane", "send-text", paneId, text + "\n"])
+                } else {
+                    _ = runSSH(remote!, "herdr", "pane", "send-text", paneId, text + "\n")
+                }
+                return
+            }
+            let labels = question.options.map { $0.label }
+            var targetIndex = labels.firstIndex { $0.caseInsensitiveCompare(text) == .orderedSame }
+            let custom = targetIndex == nil
+            if custom {
+                targetIndex = labels.firstIndex { $0 == QuestionParser.questionOther }
+            }
+            guard let target = targetIndex else { return }
+            let steps = target - question.selectedIndex
+            let dir = steps >= 0 ? "Down" : "Up"
+            let navKeys = Array(repeating: dir, count: abs(steps)) + ["Enter"]
+            guard runHerdrKeys(paneId: paneId, remote: remote, navKeys) else { return }
+            guard custom else { return }
+            // Wait up to 1.5s for the custom-answer editor, then type text.
+            let deadline = Date().addingTimeInterval(1.5)
+            while Date() < deadline {
+                let editor = remote == nil
+                    ? runHerdr("pane", "read", paneId, "--lines", "40", "--source", "recent")
+                    : runSSH(remote!, "herdr", "pane", "read", paneId, "--lines", "40", "--source", "recent")
+                if editor.contains("Enter your response:")
+                    || (editor.contains("Custom answer:") && editor.lowercased().contains("submit")) {
+                    if remote == nil {
+                        _ = runHerdrRaw(["pane", "send-text", paneId, text])
+                        _ = runHerdrKeys(paneId: paneId, remote: remote, ["Enter"])
+                    } else {
+                        _ = runSSH(remote!, "herdr", "pane", "send-text", paneId, text)
+                        _ = runSSH(remote!, "herdr", "pane", "send-keys", paneId, "Enter")
+                    }
+                    return
+                }
+                Thread.sleep(forTimeInterval: 0.05)
+            }
         }
     }
 
