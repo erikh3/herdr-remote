@@ -177,8 +177,11 @@ class HerdiAppDelegate: NSObject, NSApplicationDelegate {
                     }
                 }
 
-                // Auto-pop the approval card if panel is collapsed and there's a blocked agent
-                if let agent = blocked.first, self.panelController?.surface == .collapsed {
+                // Auto-pop the approval card if panel is collapsed and there's a
+                // blocked agent — unless a response is being delivered to it
+                // (avoids re-popping mid-answer and racing the key sequence).
+                if let agent = blocked.first(where: { !self.relay.isResponding($0.id) }),
+                   self.panelController?.surface == .collapsed {
                     withAnimation(NotchAnimation.pop) {
                         self.panelController?.surface = .approval(agentId: agent.id)
                     }

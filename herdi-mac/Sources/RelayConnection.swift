@@ -23,6 +23,12 @@ final class RelayConnection {
     private var reconnecting = false
     private var herdrPath: String = ""
     var remotes: [String] = [] // SSH targets, e.g. ["user@host"]
+    /// Panes with a response being delivered to the omp TUI. While a pane is
+    /// in-flight the poller must not re-read/re-populate it and the notch must
+    /// not re-pop its card — otherwise the ~1.5s scripted key sequence races
+    /// with the 1-2s pollers, piling repeated input into omp's answer editor.
+    /// Maps pane id → guard expiry (safety net if delivery never lands).
+    private var respondingPanes: [String: Date] = [:]
 
     init() {
         herdrPath = resolveHerdrPath()
@@ -123,7 +129,9 @@ final class RelayConnection {
                             if a.status == .blocked && existing.status != .blocked {
                                 readPaneForBlocked(existing, remote: a.host == "local" ? nil : a.host)
                             } else if existing.status == .blocked && a.status != .blocked {
-                                // Left blocked (answered in TUI): drop stale prompt.
+                                // Left blocked (answered): drop stale prompt and
+                                // clear the in-flight guard.
+                                respondingPanes[existing.id] = nil
                                 existing.prompt = nil
                                 existing.promptId = nil
                                 existing.options = nil
@@ -334,6 +342,21 @@ final class RelayConnection {
         isConnected = false
     }
 
+    /// True while a response is being delivered to this pane (guard unexpired).
+    func isResponding(_ paneId: String) -> Bool {
+        guard let expiry = respondingPanes[paneId] else { return false }
+        if Date() > expiry {
+            respondingPanes[paneId] = nil
+            return false
+        }
+        return true
+    }
+
+    /// Mark a pane in-flight for the given window (main-thread only).
+    private func beginResponding(_ paneId: String, seconds: TimeInterval) {
+        respondingPanes[paneId] = Date().addingTimeInterval(seconds)
+    }
+
     func send(response: ResponseMessage) {
         if mode == .direct {
             let paneId = response.pane_id
@@ -348,6 +371,7 @@ final class RelayConnection {
             // delivers custom text via the "Other" option which submits the
             // already-toggled checkboxes together.
             if agent.isQuestion, agent.promptId != nil {
+                beginResponding(paneId, seconds: 3)
                 directRespondToQuestion(agent: agent, text: response.text)
             } else {
                 let remote = agent.host == "local" ? nil : agent.host
@@ -404,6 +428,7 @@ final class RelayConnection {
         // ("Space toggle · Enter submit"). Toggles were already applied by
         // toggleQuestionOption; Enter confirms the current selection set.
         guard let agent = agents.first(where: { $0.id == paneId }) else { return }
+        beginResponding(paneId, seconds: 3)
         let remote = agent.host == "local" ? nil : agent.host
         let realId = realPaneId(paneId, remote: remote)
         DispatchQueue.global(qos: .userInitiated).async { [self] in
