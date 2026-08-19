@@ -568,41 +568,9 @@ final class RelayConnection {
         // Clamp cursor to the first option (omp clamps at the top row).
         _ = runHerdrKeys(paneId: realId, remote: remote, Array(repeating: "Up", count: max(optCount, 1)))
 
-        if !custom.isEmpty {
-            // Route custom text through "Other" (always the last option).
-            let otherIndex = optCount - 1
-            if otherIndex > 0 {
-                _ = runHerdrKeys(paneId: realId, remote: remote, Array(repeating: "Down", count: otherIndex))
-            }
-            _ = runHerdrKeys(paneId: realId, remote: remote, ["Enter"]) // open editor
-            let deadline = Date().addingTimeInterval(1.5)
-            while Date() < deadline {
-                let editor = readPaneRecent(realId, remote: remote, lines: 40)
-                if editor.contains("Enter your response:")
-                    || (editor.contains("Custom answer:") && editor.lowercased().contains("submit")) {
-                    if remote == nil {
-                        _ = runHerdrRaw(["pane", "send-text", realId, custom])
-                    } else {
-                        _ = runSSH(remote!, "herdr", "pane", "send-text", realId, custom)
-                    }
-                    // Commit the typed text. On a single-select tab this Enter
-                    // also advances; on a multi-select tab it only commits and
-                    // leaves the cursor on "Other" (Enter there re-opens the
-                    // editor), so advance explicitly with Tab.
-                    _ = runHerdrKeys(paneId: realId, remote: remote, ["Enter"])
-                    if live.isMultiSelect {
-                        _ = runHerdrKeys(paneId: realId, remote: remote, ["Tab"])
-                    }
-                    return
-                }
-                Thread.sleep(forTimeInterval: 0.05)
-            }
-            return
-        }
-
         if live.isMultiSelect {
-            // Walk every option top-to-bottom; Space-toggle those whose desired
-            // state differs from the live checked state.
+            // Multi-select records checkboxes AND custom "Other" text together,
+            // so apply both. First walk the options and toggle the checkboxes.
             for i in 0..<optCount {
                 let opt = live.options[i]
                 let isOther = opt.label == QuestionParser.questionOther
@@ -614,15 +582,29 @@ final class RelayConnection {
                     _ = runHerdrKeys(paneId: realId, remote: remote, ["Down"])
                 }
             }
-            // Advance with Tab, not Enter: after the toggle walk the cursor sits
-            // on "Other", where Enter would open the custom-text editor. Tab
-            // advances to the next tab from any cursor position and preserves
-            // the toggles.
+            // After the walk the cursor sits on the last option ("Other").
+            if !custom.isEmpty {
+                typeCustomText(realId: realId, remote: remote, custom)
+            }
+            // Advance with Tab, not Enter: the cursor is on "Other", where Enter
+            // would (re-)open the editor. Tab advances from any cursor position
+            // and preserves both the toggles and the committed custom text.
             _ = runHerdrKeys(paneId: realId, remote: remote, ["Tab"])
             return
         }
 
-        // Single-select: land on the chosen option, Enter advances.
+        // Single-select: custom text and options are mutually exclusive.
+        if !custom.isEmpty {
+            let otherIndex = optCount - 1
+            if otherIndex > 0 {
+                _ = runHerdrKeys(paneId: realId, remote: remote, Array(repeating: "Down", count: otherIndex))
+            }
+            // Committing the text on a single-select tab also advances.
+            _ = typeCustomText(realId: realId, remote: remote, custom)
+            return
+        }
+
+        // Land on the chosen option; Enter selects and advances.
         guard let target = fq.selected.first,
               let idx = live.options.firstIndex(where: { $0.label == target }) else {
             _ = runHerdrKeys(paneId: realId, remote: remote, ["Enter"])
@@ -632,6 +614,30 @@ final class RelayConnection {
             _ = runHerdrKeys(paneId: realId, remote: remote, Array(repeating: "Down", count: idx))
         }
         _ = runHerdrKeys(paneId: realId, remote: remote, ["Enter"])
+    }
+
+    /// Open omp's "Other" custom-text editor (cursor must already be on the
+    /// "Other" row), type the text, and commit it with Enter. Returns true once
+    /// the editor was found and the text submitted.
+    @discardableResult
+    private func typeCustomText(realId: String, remote: String?, _ text: String) -> Bool {
+        _ = runHerdrKeys(paneId: realId, remote: remote, ["Enter"]) // open editor
+        let deadline = Date().addingTimeInterval(1.5)
+        while Date() < deadline {
+            let editor = readPaneRecent(realId, remote: remote, lines: 40)
+            if editor.contains("Enter your response:")
+                || (editor.contains("Custom answer:") && editor.lowercased().contains("submit")) {
+                if remote == nil {
+                    _ = runHerdrRaw(["pane", "send-text", realId, text])
+                } else {
+                    _ = runSSH(remote!, "herdr", "pane", "send-text", realId, text)
+                }
+                _ = runHerdrKeys(paneId: realId, remote: remote, ["Enter"]) // commit
+                return true
+            }
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        return false
     }
 
     func focusPane(_ paneId: String) {

@@ -50,7 +50,8 @@ final class FormQuestion: Identifiable {
     let options: [String]     // answer labels (excludes "Other")
     /// Single-select: at most one label. Multi-select: any number.
     var selected: Set<String> = []
-    /// Free-text answer typed via "Other"; overrides `selected` when non-empty.
+    /// Free-text answer typed via "Other". For multi-select it is recorded
+    /// alongside the checked boxes; for single-select it replaces the choice.
     var customText: String = ""
 
     init(id: String, text: String, isMultiSelect: Bool, options: [String]) {
@@ -60,13 +61,21 @@ final class FormQuestion: Identifiable {
         self.options = options
     }
 
-    /// The answer for this question: custom text if provided, else the selected
-    /// labels. Empty when unanswered.
+    private var trimmedCustom: String {
+        customText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The answer labels for this question. Multi-select combines the checked
+    /// options with any custom text (omp records both). Single-select uses the
+    /// custom text when present, otherwise the chosen option. Empty = unanswered.
     var answerLabels: [String] {
-        let trimmed = customText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty { return [trimmed] }
         // Preserve option order for determinism when driving the form.
-        return options.filter { selected.contains($0) }
+        let picked = options.filter { selected.contains($0) }
+        if isMultiSelect {
+            return trimmedCustom.isEmpty ? picked : picked + [trimmedCustom]
+        }
+        if !trimmedCustom.isEmpty { return [trimmedCustom] }
+        return picked
     }
 
     var isAnswered: Bool { !answerLabels.isEmpty }
