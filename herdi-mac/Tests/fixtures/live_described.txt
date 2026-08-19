@@ -1,0 +1,100 @@
+│        Welcome back!        │ # for prompt actions                                               │
+│                             │ / for commands                                                     │
+│        ▀██████████▀         │ ! to run bash                                                      │
+│         ╘██    ██           │ $ to run python                                                    │
+│          ██    ██           │ ────────────────────────────────────────────────────────────────── │
+│          ██    ██           │ LSP Servers                                                        │
+│         ▄██▄  ▄██▄          │ No LSP servers                                                     │
+│                             │                                                                    │
+│Claude 4.6 Sonnet (hai-proxy)│                                                                    │
+│          hai-proxy          │                                                                    │
+│                             │ ────────────────────────────────────────────────────────────────── │
+│                             │ Recent sessions                                                    │
+│                             │  Environment Selection (5m ago)                                   │
+│                             │  omp-extension-handler-timeout (3d ago)                           │
+│                             │  Mapping Sap-Aicore Streams: A Guided Troubleshooting Ch… (3d ago)│
+│                             │  Test permission guard extension (3d ago)                         │
+│                             │                                                                    │
+╰─────────────────────────────┴────────────────────────────────────────────────────────────────────╯
+ Tip: Did you know? Each kitty/tmux/cmux/zellij/wezterm split keeps its own session — `omp -c`
+      resumes the right one
+
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Update Available
+ New version 17.3.8 is available. Run: omp update
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ xdev: xd://: mounted mcp__ast_grep_dump_syntax_tree, mcp__ast_grep_find_code, mcp__ast_grep_find_code_by_rule, mcp__ast_grep_test_match_code_rule,
+ mcp__browser_tools_chrome_browser_tools_claim_tab, mcp__browser_tools_chrome_browser_tools_click, mcp__browser_tools_chrome_browser_tools_confirm_network_capture,
+ mcp__browser_tools_chrome_browser_tools_content, mcp__browser_tools_chrome_browser_tools_defuddle, mcp__browser_tools_chrome_browser_tools_download,
+ mcp__browser_tools_chrome_browser_tools_eval, mcp__browser_tools_chrome_browser_tools_extract_text, mcp__browser_tools_chrome_browser_tools_find,
+ mcp__browser_tools_chrome_browser_tools_images, mcp__browser_tools_chrome_browser_tools_input_text, mcp__browser_tools_chrome_browser_tools_kill_chrome,
+ mcp__browser_tools_chrome_browser_tools_links, mcp__browser_tools_chrome_browser_tools_navigate, mcp__browser_tools_chrome_browser_tools_network_clear,
+ mcp__browser_tools_chrome_browser_tools_network_get, mcp__browser_tools_chrome_browser_tools_network_list, mcp__browser_tools_chrome_browser_tools_pdf,
+ mcp__browser_tools_chrome_browser_tools_pick, mcp__browser_tools_chrome_browser_tools_query, mcp__browser_tools_chrome_browser_tools_screenshot,
+ mcp__browser_tools_chrome_browser_tools_scroll, mcp__browser_tools_chrome_browser_tools_session_info, mcp__browser_tools_chrome_browser_tools_start,
+ mcp__browser_tools_chrome_browser_tools_stop, mcp__browser_tools_chrome_browser_tools_switch_tab, mcp__browser_tools_chrome_browser_tools_tab_title,
+ mcp__browser_tools_chrome_browser_tools_wait_for, mcp__browser_tools_claim_tab, mcp__browser_tools_click, mcp__browser_tools_confirm_network_capture,
+ mcp__browser_tools_content, mcp__browser_tools_defuddle, mcp__browser_tools_download, mcp__browser_tools_eval, mcp__browser_tools_extract_text,
+ mcp__browser_tools_find, mcp__browser_tools_images, mcp__browser_tools_input_text, mcp__browser_tools_kill_chrome, mcp__browser_tools_links,
+ mcp__browser_tools_navigate, mcp__browser_tools_network_clear, mcp__browser_tools_network_get, mcp__browser_tools_network_list, mcp__browser_tools_pdf,
+ mcp__browser_tools_pick, mcp__browser_tools_query, mcp__browser_tools_screenshot, mcp__browser_tools_scroll, mcp__browser_tools_session_info, mcp__browser_tools_start,
+ mcp__browser_tools_stop, mcp__browser_tools_switch_tab, mcp__browser_tools_tab_title, mcp__browser_tools_wait_for, mcp__context_query_docs,
+ mcp__context_resolve_library_id, mcp__engraph_append, mcp__engraph_archive, mcp__engraph_context, mcp__engraph_create, mcp__engraph_delete, mcp__engraph_edit,
+ mcp__engraph_edit_frontmatter, mcp__engraph_health, mcp__engraph_identity, mcp__engraph_list, mcp__engraph_migrate_apply, mcp__engraph_migrate_preview,
+ mcp__engraph_migrate_undo, mcp__engraph_move_note, mcp__engraph_project, mcp__engraph_read, mcp__engraph_read_section, mcp__engraph_reindex_file, mcp__engraph_rewrite,
+ mcp__engraph_search, mcp__engraph_setup, mcp__engraph_unarchive, mcp__engraph_update_metadata, mcp__engraph_vault_map, mcp__engraph_who,
+ mcp__markitdown_convert_to_markdown, mcp__sap_cls_bootstrap, mcp__sap_cls_count, mcp__sap_cls_field_caps, mcp__sap_cls_list_environments, mcp__sap_cls_list_hosts,
+ mcp__sap_cls_list_index_patterns, mcp__sap_cls_list_indices, mcp__sap_cls_search_logs, mcp__sap_cls_whoami, mcp__sap_jira_jira_get_field_options,
+│Claude 4.6 Sonnet (hai-proxy)│                                                                    │
+│          hai-proxy          │                                                                    │
+│                             │ ────────────────────────────────────────────────────────────────── │
+│                             │ Recent sessions                                                    │
+│                             │  Environment Selection (5m ago)                                   │
+│                             │  omp-extension-handler-timeout (3d ago)                           │
+│                             │  Mapping Sap-Aicore Streams: A Guided Troubleshooting Ch… (3d ago)│
+│                             │  Test permission guard extension (3d ago)                         │
+│                             │                                                                    │
+╰─────────────────────────────┴────────────────────────────────────────────────────────────────────╯
+ Tip: Did you know? Each kitty/tmux/cmux/zellij/wezterm split keeps its own session — `omp -c`
+      resumes the right one
+
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Update Available
+ New version 17.3.8 is available. Run: omp update
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ Connected to MCP servers: ast-grep, tools-github-mcp, sap-jira, markitdown, work-obsidian-omnisearch, context7, engraph, sonarqube, browser-tools, sap-cls,
+ browser-tools:chrome-browser-tools.
+
+
+ Invoke the ask tool a single time. Question text: Pick one. Provide two options, each with a description: option label Alpha with description first choice, and option
+ label Beta with description second choice. After you invoke ask, WAIT — do not answer it yourself, do not read files, do not do anything else.
+
+
+ The user wants me to invoke the ask tool once with specific parameters, then wait without doing anything else.
+
+╭─── Ask 1 questions ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+├─── [pick_one] · options:2 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│  Pick one.                                                                                                                                                            │
+│   Alpha                                                                                                                                                              │
+│    ↳ first choice                                                                                                                                                     │
+│   Beta                                                                                                                                                               │
+│    ↳ second choice                                                                                                                                                    │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ ⠹ Presenting two options for user selection ⟨esc⟩
+
+╭─ Ask ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Pick one.                                                                                                                                                             │
+├───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│   Alpha                                                                                                                                                             │
+│       first choice                                                                                                                                                    │
+│    Beta                                                                                                                                                              │
+│       second choice                                                                                                                                                   │
+│    Other (type your own)                                                                                                                                             │
+│                                                                                                                                                                       │
+├───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ Enter select · n note · ↑/↓ move · Esc cancel                                                                                                                         │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+                                                                                                                                                                  INSERT

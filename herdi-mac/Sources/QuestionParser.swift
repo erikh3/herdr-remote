@@ -86,7 +86,11 @@ enum QuestionParser {
         for (index, raw) in lines.enumerated() {
             let line = normalize(raw)
             guard let m = matchOption(line) else {
-                if !current.isEmpty {
+                // A blank/separator line ends the current option block. A
+                // non-blank, unmarked line inside a block is a description
+                // continuation (omp renders each option's description on its
+                // own indented line) — keep the block open and skip it.
+                if line.isEmpty, !current.isEmpty {
                     blocks.append((currentStart!, current))
                     current = []
                     currentStart = nil

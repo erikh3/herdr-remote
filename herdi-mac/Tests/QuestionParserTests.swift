@@ -39,6 +39,23 @@ let MULTI_SELECTED_SCREEN = """
 ╰───────╯
 """
 
+// Options carrying descriptions: omp renders each description on its own
+// unmarked, indented line beneath the option label (mirrors real widget
+// captured in fixtures/live_described.txt).
+let DESC_SCREEN = """
+╭─ Ask ─╮
+│ Pick one. │
+├───────────┤
+│ \u{276f} \u{25c9} Alpha │
+│      first choice │
+│   \u{25cb} Beta │
+│      second choice │
+│   \u{25cb} Other (type your own) │
+├───────────┤
+│ Enter select · ↑/↓ move · Esc cancel │
+╰───────╯
+"""
+
 // --- single-select detection ---
 let q = QuestionParser.detectQuestion(ASK_SCREEN)
 expect(q != nil, "ASK_SCREEN detected as question")
@@ -122,6 +139,30 @@ if let multi = loadFixture("live_multi.txt") {
            "live_multi detectOptions drops Other")
 } else {
     print("skip: live_multi.txt not captured")
+}
+
+// --- options with descriptions (synthetic) ---
+let dq = QuestionParser.detectQuestion(DESC_SCREEN)
+expect(dq != nil, "DESC_SCREEN detected as question")
+expect(dq?.text == "Pick one.", "DESC_SCREEN question text")
+expect(dq?.options.map { $0.label } == ["Alpha", "Beta", "Other (type your own)"],
+       "DESC_SCREEN option labels ignore description lines")
+expect(dq?.isMultiSelect == false, "DESC_SCREEN is single-select")
+expect(dq?.selectedIndex == 0, "DESC_SCREEN cursor on first option")
+expect(QuestionParser.detectOptions(DESC_SCREEN) == ["Alpha", "Beta"],
+       "DESC_SCREEN detectOptions drops Other + descriptions")
+
+// --- options with descriptions (real captured widget) ---
+if let described = loadFixture("live_described.txt") {
+    let lq = QuestionParser.detectQuestion(described)
+    expect(lq != nil, "live_described parsed as question")
+    expect(lq?.text == "Pick one.", "live_described question text")
+    expect(lq?.options.map { $0.label } == ["Alpha", "Beta", "Other (type your own)"],
+           "live_described option labels")
+    expect(QuestionParser.detectOptions(described) == ["Alpha", "Beta"],
+           "live_described detectOptions drops Other")
+} else {
+    print("skip: live_described.txt not captured")
 }
 
 if failures > 0 { FileHandle.standardError.write(Data("\(failures) failure(s)\n".utf8)); exit(1) }
