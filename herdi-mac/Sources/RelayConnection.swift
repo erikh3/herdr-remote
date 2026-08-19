@@ -141,6 +141,12 @@ final class RelayConnection {
                                 existing.isQuestion = false
                             }
                             existing.status = a.status
+                        } else if a.status == .blocked, !isResponding(existing.id) {
+                            // Still blocked and not mid-response: the prompt may
+                            // have advanced (e.g. next question in a multi-question
+                            // ask). Re-read; readPaneForBlocked updates promptId and
+                            // only the observer re-pops when the card is collapsed.
+                            readPaneForBlocked(existing, remote: a.host == "local" ? nil : a.host)
                         }
                         if existing.project != a.project { existing.project = a.project }
                         if existing.host != a.host { existing.host = a.host }
@@ -261,6 +267,7 @@ final class RelayConnection {
                 let displayPrompt = question.text.isEmpty ? "(question)" : question.text
 
                 DispatchQueue.main.async {
+                    let changed = agent.promptId != promptId
                     agent.prompt = displayPrompt
                     agent.promptId = promptId
                     agent.isMultiSelect = question.isMultiSelect
@@ -274,7 +281,7 @@ final class RelayConnection {
                         agent.multiOptions = []
                         agent.selectedOptions = []
                     }
-                    self.sendNotification(agent: agent.name, project: agent.project)
+                    if changed { self.sendNotification(agent: agent.name, project: agent.project) }
                 }
                 return
             }
@@ -288,6 +295,7 @@ final class RelayConnection {
                 .joined(separator: "\n")
 
             DispatchQueue.main.async {
+                let changed = agent.promptId != promptId
                 agent.prompt = String(tail.prefix(500))
                 agent.promptId = promptId
                 agent.isMultiSelect = false
@@ -297,7 +305,7 @@ final class RelayConnection {
                 agent.options = approval.isEmpty
                     ? QuestionParser.toolOptions
                     : approval
-                self.sendNotification(agent: agent.name, project: agent.project)
+                if changed { self.sendNotification(agent: agent.name, project: agent.project) }
             }
         }
     }
