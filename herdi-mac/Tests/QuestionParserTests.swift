@@ -107,6 +107,27 @@ expect(QuestionParser.questionCount("no ask header here") == nil,
 expect(QuestionParser.questionCount("╭── Ask 12 questions ──╮") == 12,
        "questionCount parses multi-digit count")
 
+// --- review/submit screen detection ---
+let REVIEW_SCREEN = """
+╭─ Ask ─╮
+│ env    feat    notify    Submit │
+│ Review answers │
+├───────────────┤
+│ 1. env: Staging │
+│ 2. feat: Cache, Metrics │
+│ 3. notify: Yes │
+│  Submit │
+├───────────────┤
+│ Enter submit · ↑/↓ scroll · Esc cancel │
+╰───────╯
+"""
+expect(QuestionParser.isReviewScreen(REVIEW_SCREEN) == true,
+       "isReviewScreen detects review/submit screen")
+expect(QuestionParser.isReviewScreen(ASK_SCREEN) == false,
+       "isReviewScreen false for a normal question")
+expect(QuestionParser.detectQuestion(REVIEW_SCREEN) == nil,
+       "review screen is not parsed as a question")
+
 // --- Finding 2: CRLF regression ---
 let ASK_CRLF = ASK_SCREEN.replacingOccurrences(of: "\n", with: "\r\n")
 expect(QuestionParser.detectQuestion(ASK_CRLF)?.options.map { $0.label } == ["Red", "Blue", "Green", "Other (type your own)"],

@@ -254,6 +254,22 @@ final class RelayConnection {
         DispatchQueue.global(qos: .utility).async { [self] in
             let raw = readPaneRecent(paneId, remote: remote)
 
+            // Multi-question Review/Submit screen: the cursor is already on
+            // "Submit"; press Enter to submit all collected answers rather than
+            // surfacing the review as another prompt. Keep the card hidden.
+            if QuestionParser.isReviewScreen(raw) {
+                _ = runHerdrKeys(paneId: paneId, remote: remote, ["Enter"])
+                DispatchQueue.main.async {
+                    self.beginResponding(agent.id, seconds: 3)
+                    agent.prompt = nil
+                    agent.promptId = nil
+                    agent.options = nil
+                    agent.isQuestion = false
+                    agent.questionTotal = nil
+                }
+                return
+            }
+
             let question = QuestionParser.detectQuestion(raw)
             let promptId = QuestionParser.promptId(paneId: agent.id, content: raw)
 

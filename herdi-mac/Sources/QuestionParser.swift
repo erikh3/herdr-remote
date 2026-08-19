@@ -177,6 +177,18 @@ enum QuestionParser {
         return nil
     }
 
+    /// True when the pane shows omp's multi-question Review/Submit confirmation
+    /// screen (the final step after all questions are answered). It has no
+    /// selectable option markers, so detectQuestion returns nil for it; callers
+    /// use this to auto-submit instead of surfacing it as a prompt.
+    static func isReviewScreen(_ text: String) -> Bool {
+        let hasReview = text.contains("Review answers")
+        // Footer distinguishes the review screen ("Enter submit · ↑/↓ scroll")
+        // from a question ("Enter select"/"Space toggle").
+        let hasSubmitFooter = text.contains("Enter submit") && text.contains("scroll")
+        return hasReview && hasSubmitFooter
+    }
+
     // Manual hex: String(format:"%02x") emits zeros under this toolchain's optimizer.
     private static let hexDigits = Array("0123456789abcdef")
     private static func hex(_ bytes: [UInt8]) -> String {
