@@ -177,10 +177,20 @@ class HerdiAppDelegate: NSObject, NSApplicationDelegate {
                     }
                 }
 
+                // Prune stale dismissals to the set of currently-blocked prompts.
+                let liveKeys = Set(blocked.map {
+                    PanelWindowController.promptKey(agentId: $0.id, promptId: $0.promptId)
+                })
+                self.panelController?.pruneDismissed(liveKeys: liveKeys)
+
                 // Auto-pop the approval card if panel is collapsed and there's a
                 // blocked agent — unless a response is being delivered to it
-                // (avoids re-popping mid-answer and racing the key sequence).
-                if let agent = blocked.first(where: { !self.relay.isResponding($0.id) }),
+                // (avoids re-popping mid-answer and racing the key sequence) or
+                // the user explicitly minimized this exact prompt.
+                if let agent = blocked.first(where: {
+                    !self.relay.isResponding($0.id)
+                        && self.panelController?.isPromptDismissed(agentId: $0.id, promptId: $0.promptId) != true
+                }),
                    self.panelController?.surface == .collapsed {
                     withAnimation(NotchAnimation.pop) {
                         self.panelController?.surface = .approval(agentId: agent.id)

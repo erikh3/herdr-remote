@@ -300,15 +300,21 @@ final class RelayConnection {
                     agent.multiOptions = []
                     agent.selectedOptions = []
                     if changed {
-                        agent.form = MultiQuestionForm(questions: subs.map {
-                            FormQuestion(
-                                id: $0.key,
-                                text: $0.text,
-                                isMultiSelect: $0.isMultiSelect,
-                                options: $0.options
+                        agent.form = MultiQuestionForm(questions: subs.map { sub in
+                            let descs = Dictionary(
+                                sub.options.compactMap { opt in
+                                    opt.description.map { (opt.label, $0) }
+                                },
+                                uniquingKeysWith: { first, _ in first })
+                            return FormQuestion(
+                                id: sub.key,
+                                text: sub.text,
+                                isMultiSelect: sub.isMultiSelect,
+                                options: sub.options
                                     .map { $0.label }
                                     .filter { $0 != QuestionParser.questionOther
-                                              && !$0.contains("Done selecting") })
+                                              && !$0.contains("Done selecting") },
+                                descriptions: descs)
                         })
                         self.sendNotification(agent: agent.name, project: agent.project)
                     }
@@ -324,6 +330,11 @@ final class RelayConnection {
                     .filter { $0.multi && $0.checked && $0.label != QuestionParser.questionOther
                               && !$0.label.contains("Done selecting") }
                     .map { $0.label }
+                let descriptions = Dictionary(
+                    question.options.compactMap { opt in
+                        opt.description.map { (opt.label, $0) }
+                    },
+                    uniquingKeysWith: { first, _ in first })
                 let displayPrompt = question.text.isEmpty ? "(question)" : question.text
                 let total = QuestionParser.questionCount(raw)
 
@@ -333,6 +344,7 @@ final class RelayConnection {
                     agent.promptId = promptId
                     agent.isQuestion = true
                     agent.questionTotal = total
+                    agent.optionDescriptions = descriptions
                     agent.form = nil
                     if question.isMultiSelect {
                         agent.options = nil
@@ -343,7 +355,10 @@ final class RelayConnection {
                         agent.multiOptions = []
                         agent.selectedOptions = []
                     }
-                    if changed { self.sendNotification(agent: agent.name, project: agent.project) }
+                    if changed {
+                        agent.customDraft = ""
+                        self.sendNotification(agent: agent.name, project: agent.project)
+                    }
                 }
                 return
             }
@@ -364,12 +379,16 @@ final class RelayConnection {
                 agent.isQuestion = false
                 agent.questionTotal = nil
                 agent.form = nil
+                agent.optionDescriptions = [:]
                 agent.multiOptions = []
                 agent.selectedOptions = []
                 agent.options = approval.isEmpty
                     ? QuestionParser.toolOptions
                     : approval
-                if changed { self.sendNotification(agent: agent.name, project: agent.project) }
+                if changed {
+                    agent.customDraft = ""
+                    self.sendNotification(agent: agent.name, project: agent.project)
+                }
             }
         }
     }

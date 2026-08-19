@@ -110,6 +110,7 @@ struct NotchPanelView: View {
         case .approval(let agentId):
             if let agent = relay.agents.first(where: { $0.id == agentId }) {
                 ApprovalCard(agent: agent, relay: relay) {
+                    controller.dismissPrompt(agentId: agent.id, promptId: agent.promptId)
                     withAnimation(NotchAnimation.close) {
                         controller.surface = .collapsed
                     }
@@ -539,12 +540,19 @@ private struct PromptHeightKey: PreferenceKey {
     }
 }
 
+private struct OptionsHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 private struct ApprovalCard: View {
     let agent: Agent
     let relay: RelayConnection
     let onDismiss: () -> Void
-    @State private var customResponse = ""
     @State private var promptContentHeight: CGFloat = 0
+    @State private var optionsContentHeight: CGFloat = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -552,10 +560,14 @@ private struct ApprovalCard: View {
             HStack(spacing: 8) {
                 Button { onDismiss() } label: {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(.white.opacity(0.6))
+                        .frame(width: 40, height: 20)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .help("Minimize")
+                .padding(.leading, -12)
 
                 RoundedRectangle(cornerRadius: 2)
                     .fill(.red)
@@ -634,40 +646,66 @@ private struct ApprovalCard: View {
             )
             .padding(.horizontal, 12)
 
-            if agent.isMultiSelect, let promptId = agent.promptId {
-                VStack(spacing: 6) {
-                    ForEach(agent.multiOptions, id: \.self) { option in
-                        Button {
-                            toggle(option, promptId: promptId)
-                        } label: {
-                            HStack {
-                                Image(systemName: agent.selectedOptions.contains(option) ? "checkmark.square.fill" : "square")
-                                Text(option)
-                                Spacer()
+            ScrollView {
+                Group {
+                    if agent.isMultiSelect, let promptId = agent.promptId {
+                        VStack(spacing: 6) {
+                            ForEach(agent.multiOptions, id: \.self) { option in
+                                Button {
+                                    toggle(option, promptId: promptId)
+                                } label: {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        HStack {
+                                            Image(systemName: agent.selectedOptions.contains(option) ? "checkmark.square.fill" : "square")
+                                            Text(option)
+                                            Spacer()
+                                        }
+                                        if let desc = agent.optionDescriptions[option], !desc.isEmpty {
+                                            Text(desc)
+                                                .font(.system(size: 9))
+                                                .foregroundStyle(.white.opacity(0.45))
+                                                .fixedSize(horizontal: false, vertical: true)
+                                                .padding(.leading, 20)
+                                        }
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .frame(maxWidth: .infinity)
+                            Button {
+                                submit(promptId: promptId)
+                            } label: {
+                                Label("Submit", systemImage: "checkmark.circle.fill")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.borderedProminent)
                         }
-                        .buttonStyle(.plain)
+                        .padding(.horizontal, 12)
+                    } else {
+                        ResponseButtonGrid(options: agent.options, isQuestion: agent.isQuestion,
+                                           descriptions: agent.optionDescriptions) { response in
+                            respond(response)
+                        }
+                        .padding(.horizontal, 12)
                     }
-                    Button {
-                        submit(promptId: promptId)
-                    } label: {
-                        Label("Submit", systemImage: "checkmark.circle.fill")
-                            .frame(maxWidth: .infinity)
+                }
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear.preference(key: OptionsHeightKey.self, value: proxy.size.height)
                     }
-                    .buttonStyle(.borderedProminent)
-                }
-                .padding(.horizontal, 12)
-            } else {
-                ResponseButtonGrid(options: agent.options, isQuestion: agent.isQuestion) { response in
-                    respond(response)
-                }
-                .padding(.horizontal, 12)
+                )
             }
+            // Hug short option lists; scroll only when they exceed the cap so the
+            // custom-reply field below always stays inside the panel bounds.
+            .frame(height: min(max(optionsContentHeight, 1), 240))
+            .onPreferenceChange(OptionsHeightKey.self) { optionsContentHeight = $0 }
 
             // Custom text input
             HStack(spacing: 6) {
-                TextField("Custom reply…", text: $customResponse)
+                TextField("Custom reply…", text: Binding(
+                    get: { agent.customDraft },
+                    set: { agent.customDraft = $0 }
+                ))
                     .textFieldStyle(.plain)
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(.white)
@@ -681,15 +719,15 @@ private struct ApprovalCard: View {
                         RoundedRectangle(cornerRadius: 8)
                             .stroke(.white.opacity(0.1), lineWidth: 0.5)
                     )
-                    .onSubmit { if !customResponse.isEmpty { respond(customResponse) } }
+                    .onSubmit { if !agent.customDraft.isEmpty { respond(agent.customDraft) } }
 
-                Button { respond(customResponse) } label: {
+                Button { respond(agent.customDraft) } label: {
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.system(size: 20))
-                        .foregroundStyle(customResponse.isEmpty ? .white.opacity(0.15) : .blue)
+                        .foregroundStyle(agent.customDraft.isEmpty ? .white.opacity(0.15) : .blue)
                 }
                 .buttonStyle(.plain)
-                .disabled(customResponse.isEmpty)
+                .disabled(agent.customDraft.isEmpty)
                 .keyboardShortcut(.return, modifiers: .command)
             }
             .padding(.horizontal, 12)
@@ -705,6 +743,7 @@ private struct ApprovalCard: View {
         agent.promptId = nil
         agent.options = nil
         agent.isQuestion = false
+        agent.customDraft = ""
         onDismiss()
     }
 
@@ -720,8 +759,8 @@ private struct ApprovalCard: View {
     private func submit(promptId: String) {
         // Non-empty custom text: deliver it (with the already-toggled boxes)
         // through the Other-option flow, same as pressing Enter in the field.
-        if !customResponse.isEmpty {
-            respond(customResponse)
+        if !agent.customDraft.isEmpty {
+            respond(agent.customDraft)
             return
         }
         relay.submitQuestion(paneId: agent.id, promptId: promptId)
@@ -816,13 +855,21 @@ private struct FormQuestionSection: View {
 
             ForEach(question.options, id: \.self) { option in
                 Button { select(option) } label: {
-                    HStack(spacing: 8) {
+                    HStack(alignment: .top, spacing: 8) {
                         Image(systemName: markerIcon(for: option))
                             .font(.system(size: 12))
                             .foregroundStyle(isSelected(option) ? .blue : .white.opacity(0.4))
-                        Text(option)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.white.opacity(0.9))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(option)
+                                .font(.system(size: 11))
+                                .foregroundStyle(.white.opacity(0.9))
+                            if let desc = question.descriptions[option], !desc.isEmpty {
+                                Text(desc)
+                                    .font(.system(size: 9))
+                                    .foregroundStyle(.white.opacity(0.45))
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
                         Spacer()
                     }
                     .padding(.vertical, 5)
@@ -894,6 +941,7 @@ private struct FormQuestionSection: View {
 private struct ResponseButtonGrid: View {
     let options: [String]?
     var isQuestion: Bool = false
+    var descriptions: [String: String] = [:]
     let onRespond: (String) -> Void
 
     private var buttons: [ResponseAction] {
@@ -904,7 +952,8 @@ private struct ResponseButtonGrid: View {
         if isQuestion {
             return options.map {
                 ResponseAction(label: $0, icon: "circle", tint: .white.opacity(0.85),
-                               shortcut: nil, rawValue: $0)
+                               shortcut: nil, rawValue: $0,
+                               description: descriptions[$0])
             }
         }
         return options.map { mapOption($0) }
@@ -978,7 +1027,7 @@ private struct ResponseAction: Identifiable {
     let tint: Color
     let shortcut: String?
     let rawValue: String
-
+    var description: String? = nil
     var id: String { rawValue }
 }
 
@@ -997,15 +1046,25 @@ private struct ResponseButton: View {
                 onTap()
             }
         } label: {
-            HStack(spacing: 5) {
-                Image(systemName: action.icon)
-                    .font(.system(size: 10, weight: .semibold))
-                Text(action.label)
-                    .font(.system(size: 10, weight: .semibold))
-                if let shortcut = action.shortcut {
-                    Text(shortcut)
-                        .font(.system(size: 8, weight: .medium))
-                        .foregroundStyle(action.tint.opacity(0.5))
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 5) {
+                    Image(systemName: action.icon)
+                        .font(.system(size: 10, weight: .semibold))
+                    Text(action.label)
+                        .font(.system(size: 10, weight: .semibold))
+                    if let shortcut = action.shortcut {
+                        Text(shortcut)
+                            .font(.system(size: 8, weight: .medium))
+                            .foregroundStyle(action.tint.opacity(0.5))
+                    }
+                }
+                if let description = action.description, !description.isEmpty {
+                    Text(description)
+                        .font(.system(size: 9))
+                        .foregroundStyle(.white.opacity(0.45))
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.leading, 15)
                 }
             }
             .foregroundStyle(hovered ? .white : action.tint)

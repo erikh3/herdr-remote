@@ -56,6 +56,24 @@ let DESC_SCREEN = """
 ╰───────╯
 """
 
+// Multi-question preview with per-option "↳" descriptions.
+let DESC_PREVIEW = """
+╭─── Ask 2 questions ───╮
+├─── [db] · options:2 ───┤
+│  Pick DB │
+│   \u{25cb} Postgres │
+│    \u{21b3} relational store │
+│   \u{25cb} SQLite │
+│    \u{21b3} embedded file │
+├─── [caps] · multi · options:2 ───┤
+│  Capabilities? │
+│   \u{2610} Cache │
+│    \u{21b3} in-memory layer │
+│   \u{2610} Tracing │
+│    \u{21b3} request spans │
+╰───╯
+"""
+
 // --- single-select detection ---
 let q = QuestionParser.detectQuestion(ASK_SCREEN)
 expect(q != nil, "ASK_SCREEN detected as question")
@@ -180,6 +198,10 @@ expect(dq?.options.map { $0.label } == ["Alpha", "Beta", "Other (type your own)"
        "DESC_SCREEN option labels ignore description lines")
 expect(dq?.isMultiSelect == false, "DESC_SCREEN is single-select")
 expect(dq?.selectedIndex == 0, "DESC_SCREEN cursor on first option")
+expect(dq?.options.first { $0.label == "Alpha" }?.description == "first choice",
+       "DESC_SCREEN Alpha description captured")
+expect(dq?.options.first { $0.label == "Beta" }?.description == "second choice",
+       "DESC_SCREEN Beta description captured")
 expect(QuestionParser.detectOptions(DESC_SCREEN) == ["Alpha", "Beta"],
        "DESC_SCREEN detectOptions drops Other + descriptions")
 
@@ -194,6 +216,23 @@ if let described = loadFixture("live_described.txt") {
            "live_described detectOptions drops Other")
 } else {
     print("skip: live_described.txt not captured")
+}
+
+// --- widget option descriptions (real captured single-question widget) ---
+if let desc = loadFixture("live_desc.txt") {
+    let lq = QuestionParser.detectQuestion(desc)
+    expect(lq != nil, "live_desc parsed as question")
+    expect(lq?.text == "Pick DB", "live_desc question text")
+    expect(lq?.options.map { $0.label } == ["Postgres (Recommended)", "SQLite", "Dynamo", "Other (type your own)"],
+           "live_desc option labels keep (Recommended) suffix")
+    expect(lq?.options.first { $0.label == "Postgres (Recommended)" }?.description == "relational",
+           "live_desc Postgres description captured")
+    expect(lq?.options.first { $0.label == "SQLite" }?.description == "embedded",
+           "live_desc SQLite description captured")
+    expect(lq?.options.first { $0.label == "Dynamo" }?.description == "serverless",
+           "live_desc Dynamo description captured")
+} else {
+    print("skip: live_desc.txt not captured")
 }
 
 // --- multi-question preview parsing ---
@@ -216,6 +255,20 @@ if let preview = loadFixture("live_multipreview.txt") {
 }
 expect(QuestionParser.parseMultiQuestionPreview(ASK_SCREEN).isEmpty,
        "parseMultiQuestionPreview empty for single-question ask")
+
+// --- multi-question preview descriptions (synthetic) ---
+let descSubs = QuestionParser.parseMultiQuestionPreview(DESC_PREVIEW)
+expect(descSubs.count == 2, "DESC_PREVIEW parses 2 sub-questions")
+expect(descSubs.first?.options.map { $0.label } == ["Postgres", "SQLite"],
+       "DESC_PREVIEW db labels exclude description lines")
+expect(descSubs.first?.options.first { $0.label == "Postgres" }?.description == "relational store",
+       "DESC_PREVIEW Postgres description captured")
+expect(descSubs.first?.options.first { $0.label == "SQLite" }?.description == "embedded file",
+       "DESC_PREVIEW SQLite description captured")
+expect(descSubs.last?.text == "Capabilities?",
+       "DESC_PREVIEW caps question text excludes descriptions")
+expect(descSubs.last?.options.first { $0.label == "Cache" }?.description == "in-memory layer",
+       "DESC_PREVIEW Cache description captured")
 
 if failures > 0 { FileHandle.standardError.write(Data("\(failures) failure(s)\n".utf8)); exit(1) }
 print("ALL PASS")

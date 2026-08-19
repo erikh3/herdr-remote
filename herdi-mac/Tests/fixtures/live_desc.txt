@@ -1,0 +1,40 @@
+╰─────────────────────────────┴────────────────────────────────────────────────────────────────────╯
+ Tip: Press shift+tab to cycle through reasoning effort levels
+
+ Connected to MCP servers: ast-grep, tools-github-mcp, sap-jira, markitdown, work-obsidian-omnisearch, context7, engraph, sonarqube, browser-tools, sap-cls,
+ browser-tools:chrome-browser-tools.
+
+
+ Call ask ONCE with a single question "Pick DB" and 3 options each with a description: Postgres desc "relational", SQLite desc "embedded", Dynamo desc "serverless",
+ recommended 0. Fire and wait, nothing else.
+
+
+ The user wants me to call the ask tool once with a single question "Pick DB" and 3 options with descriptions, recommended option 0. Nothing else.
+
+╭─── Ask 1 questions ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+├─── [db] · options:3 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│  Pick DB                                                                                                                                                              │
+│   Postgres                                                                                                                                                           │
+│    ↳ relational                                                                                                                                                       │
+│   SQLite                                                                                                                                                             │
+│    ↳ embedded                                                                                                                                                         │
+│   Dynamo                                                                                                                                                             │
+│    ↳ serverless                                                                                                                                                       │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ ⠹ Pick DB question ⟨esc⟩
+
+╭─ Ask ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Pick DB                                                                                                                                                               │
+├───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│   Postgres (Recommended)                                                                                                                                            │
+│       relational                                                                                                                                                      │
+│    SQLite                                                                                                                                                            │
+│       embedded                                                                                                                                                        │
+│    Dynamo                                                                                                                                                            │
+│       serverless                                                                                                                                                      │
+│    Other (type your own)                                                                                                                                             │
+├───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ Enter select · n note · ↑/↓ move · Esc cancel                                                                                                                         │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+                                                                                                                                                                  INSERT

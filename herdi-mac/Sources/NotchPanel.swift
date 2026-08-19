@@ -116,11 +116,43 @@ final class PanelWindowController: NSObject, NSWindowDelegate, ObservableObject 
     private let relay: RelayConnection
     @Published var surface: IslandSurface = .collapsed
     private var globalClickMonitor: Any?
+    private var keyMonitor: Any?
     private var fullscreenLatch = false
+
+    /// Prompt keys the user explicitly minimized. Suppresses auto-pop until the
+    /// user hovers Herdi (re-arm) or the prompt changes (new key).
+    private var dismissedKeys: Set<String> = []
 
     init(relay: RelayConnection) {
         self.relay = relay
         super.init()
+    }
+
+    /// Stable per-prompt key. `promptId` changes when the question changes, so a
+    /// new prompt for the same agent produces a fresh key and re-pops.
+    static func promptKey(agentId: String, promptId: String?) -> String {
+        "\(agentId)|\(promptId ?? "")"
+    }
+
+    /// User minimized this prompt via the chevron; suppress auto-pop for its key.
+    func dismissPrompt(agentId: String, promptId: String?) {
+        dismissedKeys.insert(Self.promptKey(agentId: agentId, promptId: promptId))
+    }
+
+    /// True when the user has minimized this exact prompt and it should stay hidden.
+    func isPromptDismissed(agentId: String, promptId: String?) -> Bool {
+        dismissedKeys.contains(Self.promptKey(agentId: agentId, promptId: promptId))
+    }
+
+    /// Re-arm auto-pop for every prompt (called when the user hovers Herdi).
+    func rearmDismissed() {
+        dismissedKeys.removeAll()
+    }
+
+    /// Drop dismissal keys that no longer correspond to a live blocked prompt so
+    /// the set can't grow without bound.
+    func pruneDismissed(liveKeys: Set<String>) {
+        dismissedKeys.formIntersection(liveKeys)
     }
 
     func showPanel() {
@@ -173,12 +205,55 @@ final class PanelWindowController: NSObject, NSWindowDelegate, ObservableObject 
         globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             Task { @MainActor in
                 guard let self, self.surface.isExpanded else { return }
-                // Don't collapse during active approval interaction
-                if case .approval = self.surface { return }
+                // Approval: minimize and suppress re-pop (same as chevron/Esc).
+                if case .approval = self.surface {
+                    self.minimizeCurrentApproval()
+                    return
+                }
                 withAnimation(NotchAnimation.close) {
                     self.surface = .collapsed
                 }
             }
+        }
+
+        // Key handling for the approval card: Esc minimizes while editing the
+        // custom-reply field; Backspace minimizes when no text field is focused.
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
+            guard let self else { return event }
+            guard case .approval = self.surface else { return event }
+            let editingText = self.isEditingTextField
+            // 53 = Escape (always minimizes), 51 = Delete/Backspace (only when no
+            // text field is focused, so it doesn't hijack editing).
+            if event.keyCode == 53 {
+                self.minimizeCurrentApproval()
+                return nil
+            }
+            if event.keyCode == 51 && !editingText {
+                self.minimizeCurrentApproval()
+                return nil
+            }
+            return event
+        }
+    }
+
+    /// True when the key window's first responder is a text-editing view (the
+    /// custom-reply field). Used to route Esc vs Backspace minimize.
+    private var isEditingTextField: Bool {
+        guard let responder = panel?.firstResponder else { return false }
+        if responder is NSTextView { return true }
+        if let view = responder as? NSView, view is NSTextField { return true }
+        return false
+    }
+
+    /// Minimize the currently-shown approval card and suppress its re-pop, matching
+    /// the chevron behavior.
+    private func minimizeCurrentApproval() {
+        guard case let .approval(agentId) = surface else { return }
+        if let agent = relay.agents.first(where: { $0.id == agentId }) {
+            dismissPrompt(agentId: agent.id, promptId: agent.promptId)
+        }
+        withAnimation(NotchAnimation.close) {
+            surface = .collapsed
         }
     }
 
@@ -258,6 +333,9 @@ final class PanelWindowController: NSObject, NSWindowDelegate, ObservableObject 
 
     deinit {
         if let monitor = globalClickMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        if let monitor = keyMonitor {
             NSEvent.removeMonitor(monitor)
         }
     }

@@ -6,6 +6,7 @@ struct QuestionOption: Equatable {
     let selected: Bool   // live cursor is on this row
     let multi: Bool      // checkbox-style marker
     let checked: Bool    // checkbox currently ticked
+    var description: String? = nil  // omp option description (subtext)
 }
 
 struct ParsedQuestion {
@@ -20,6 +21,7 @@ struct MultiQuestionOption: Equatable {
     let label: String
     let multi: Bool      // checkbox-style (vs radio single-select)
     let checked: Bool    // preview shows a pre-checked box
+    var description: String? = nil  // omp option description (subtext)
 }
 
 /// One sub-question parsed from omp's multi-question preview box. omp renders
@@ -53,6 +55,23 @@ enum QuestionParser {
         raw.trimmingCharacters(in: .whitespacesAndNewlines)
            .trimmingCharacters(in: CharacterSet(charactersIn: "\u{2502}|"))
            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// True when a normalized line is an omp option-description line. In the
+    /// preview box these are prefixed with "↳" (also tolerate ⤷/→ variants).
+    private static func isDescriptionLine(_ line: String) -> Bool {
+        guard let first = line.first else { return false }
+        return "\u{21b3}\u{2937}\u{2192}".contains(first)
+    }
+
+    /// Strip a leading description marker (preview uses "↳ ", widget uses plain
+    /// indentation) and surrounding whitespace, returning the description text.
+    private static func stripDescriptionMarker(_ line: String) -> String {
+        var s = line
+        if let first = s.first, "\u{21b3}\u{2937}\u{2192}".contains(first) {
+            s.removeFirst()
+        }
+        return s.trimmingCharacters(in: .whitespaces)
     }
 
     private struct OptionMatch { let cursor: Bool; let marker: String; let label: String }
@@ -105,13 +124,23 @@ enum QuestionParser {
             let line = normalize(raw)
             guard let m = matchOption(line) else {
                 // A blank/separator line ends the current option block. A
-                // non-blank, unmarked line inside a block is a description
-                // continuation (omp renders each option's description on its
-                // own indented line) — keep the block open and skip it.
+                // non-blank, unmarked line inside a block is the preceding
+                // option's description (omp renders each option's description on
+                // its own indented line) — attach it to the last option.
                 if line.isEmpty, !current.isEmpty {
                     blocks.append((currentStart!, current))
                     current = []
                     currentStart = nil
+                } else if !line.isEmpty, !current.isEmpty,
+                          current[current.count - 1].opt.description == nil {
+                    let last = current[current.count - 1]
+                    let desc = stripDescriptionMarker(line)
+                    current[current.count - 1] = (
+                        last.match,
+                        QuestionOption(
+                            label: last.opt.label, selected: last.opt.selected,
+                            multi: last.opt.multi, checked: last.opt.checked,
+                            description: desc))
                 }
                 continue
             }
@@ -267,6 +296,13 @@ enum QuestionParser {
                     label: m.label,
                     multi: multiMarkers.contains(m.marker),
                     checked: checkedMarkers.contains(m.marker)))
+            } else if isDescriptionLine(line), !options.isEmpty,
+                      options[options.count - 1].description == nil {
+                // "↳ text" under an option is that option's description.
+                let last = options[options.count - 1]
+                options[options.count - 1] = MultiQuestionOption(
+                    label: last.label, multi: last.multi, checked: last.checked,
+                    description: stripDescriptionMarker(line))
             } else if line.contains(where: { $0.isLetter || $0.isNumber }) {
                 questionLines.append(line)
             }

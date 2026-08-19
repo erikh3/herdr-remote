@@ -29,6 +29,12 @@ final class Agent: Identifiable {
     /// Non-nil replaces the single-question UI with an all-questions card that
     /// collects every answer and submits omp's tabbed form once.
     var form: MultiQuestionForm? = nil
+    /// In-progress custom reply text, persisted on the model so it survives
+    /// minimizing/re-opening the approval card (which tears down the view).
+    var customDraft = ""
+    /// Per-option description subtext for the current question, keyed by label.
+    /// Covers both single-select (`options`) and multi-select (`multiOptions`).
+    var optionDescriptions: [String: String] = [:]
 
     init(id: String, name: String, status: AgentStatus, project: String, cwd: String, host: String = "local") {
         self.id = id
@@ -48,17 +54,21 @@ final class FormQuestion: Identifiable {
     let text: String
     let isMultiSelect: Bool
     let options: [String]     // answer labels (excludes "Other")
+    /// Optional per-option description subtext, keyed by label.
+    let descriptions: [String: String]
     /// Single-select: at most one label. Multi-select: any number.
     var selected: Set<String> = []
     /// Free-text answer typed via "Other". For multi-select it is recorded
     /// alongside the checked boxes; for single-select it replaces the choice.
     var customText: String = ""
 
-    init(id: String, text: String, isMultiSelect: Bool, options: [String]) {
+    init(id: String, text: String, isMultiSelect: Bool, options: [String],
+         descriptions: [String: String] = [:]) {
         self.id = id
         self.text = text
         self.isMultiSelect = isMultiSelect
         self.options = options
+        self.descriptions = descriptions
     }
 
     private var trimmedCustom: String {
