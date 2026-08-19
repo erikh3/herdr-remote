@@ -74,6 +74,21 @@ let DESC_PREVIEW = """
 ╰───╯
 """
 
+// Tabbed multi-select whose question text ends with the word "Submit" — the
+// tab-bar "Submit" tab must be skipped without dropping the real question line.
+let SUBMIT_WORD_SCREEN = """
+╭─ Ask ─╮
+│  langs    Submit │
+│ Check these, then press Submit: │
+├───────────┤
+│ \u{f054} \u{f096} Kotlin │
+│   \u{f096} Swift │
+│   \u{f096} Other (type your own) │
+├───────────┤
+│ Space toggle · Enter submit · Esc cancel │
+╰───────╯
+"""
+
 // --- single-select detection ---
 let q = QuestionParser.detectQuestion(ASK_SCREEN)
 expect(q != nil, "ASK_SCREEN detected as question")
@@ -189,6 +204,15 @@ if let multi = loadFixture("live_multi.txt") {
 } else {
     print("skip: live_multi.txt not captured")
 }
+
+// --- question text ending in "Submit" (tab-bar skip regression) ---
+let sw = QuestionParser.detectQuestion(SUBMIT_WORD_SCREEN)
+expect(sw != nil, "SUBMIT_WORD_SCREEN detected as question")
+expect(sw?.text == "Check these, then press Submit:",
+       "SUBMIT_WORD_SCREEN keeps question ending in Submit, skips tab bar")
+expect(sw?.isMultiSelect == true, "SUBMIT_WORD_SCREEN is multi-select")
+expect(QuestionParser.detectOptions(SUBMIT_WORD_SCREEN) == ["Kotlin", "Swift"],
+       "SUBMIT_WORD_SCREEN detectOptions drops Other")
 
 // --- options with descriptions (synthetic) ---
 let dq = QuestionParser.detectQuestion(DESC_SCREEN)

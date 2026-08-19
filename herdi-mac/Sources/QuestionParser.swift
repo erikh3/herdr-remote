@@ -168,7 +168,13 @@ enum QuestionParser {
                     if !questionLines.isEmpty { break }
                     continue
                 }
-                let isSubmit = line.lowercased().contains("submit")
+                // The tabbed-form tab bar ends with the "Submit" tab (e.g.
+                // "langs    Submit"). Only treat a line as that chrome when
+                // "Submit" is its final whitespace-delimited token, so a prose
+                // question that merely mentions submit (e.g. "…press Submit:")
+                // is still captured as the question text.
+                let isSubmit = line.split(whereSeparator: { $0 == " " })
+                    .last?.caseInsensitiveCompare("Submit") == .orderedSame
                 let isAskChrome = line.range(
                     of: #"^[\W_]*ask[\W_]*$"#, options: [.regularExpression, .caseInsensitive]) != nil
                 let hasAlnum = line.contains { $0.isLetter || $0.isNumber }
