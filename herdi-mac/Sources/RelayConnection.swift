@@ -372,7 +372,8 @@ final class RelayConnection {
             task?.send(.string(String(data: data, encoding: .utf8)!)) { _ in }
             return
         }
-        // Direct mode: navigate cursor to the option and press Enter to toggle.
+        // Direct mode: navigate cursor to the option, press Space to toggle it
+        // (omp multi-select: "Space toggle · Enter submit").
         guard let agent = agents.first(where: { $0.id == paneId }) else { return }
         let remote = agent.host == "local" ? nil : agent.host
         let realId = realPaneId(paneId, remote: remote)
@@ -384,7 +385,7 @@ final class RelayConnection {
             }) else { return }
             let steps = target - question.selectedIndex
             let dir = steps >= 0 ? "Down" : "Up"
-            let keys = Array(repeating: dir, count: abs(steps)) + ["Enter"]
+            let keys = Array(repeating: dir, count: abs(steps)) + ["Space"]
             _ = runHerdrKeys(paneId: realId, remote: remote, keys)
         }
     }
@@ -397,21 +398,16 @@ final class RelayConnection {
             task?.send(.string(String(data: data, encoding: .utf8)!)) { _ in }
             return
         }
-        // Direct mode: move to "Done selecting" and Enter, else Tab+Enter to Submit.
+        // Direct mode: omp multi-select submits on Enter
+        // ("Space toggle · Enter submit"). Toggles were already applied by
+        // toggleQuestionOption; Enter confirms the current selection set.
         guard let agent = agents.first(where: { $0.id == paneId }) else { return }
         let remote = agent.host == "local" ? nil : agent.host
         let realId = realPaneId(paneId, remote: remote)
         DispatchQueue.global(qos: .userInitiated).async { [self] in
             let raw = readPaneRecent(realId, remote: remote)
             guard let question = QuestionParser.detectQuestion(raw), question.isMultiSelect else { return }
-            if let done = question.options.firstIndex(where: { $0.label.contains("Done selecting") }) {
-                let steps = done - question.selectedIndex
-                let dir = steps >= 0 ? "Down" : "Up"
-                let keys = Array(repeating: dir, count: abs(steps)) + ["Enter"]
-                _ = runHerdrKeys(paneId: realId, remote: remote, keys)
-            } else if raw.contains("Submit") {
-                _ = runHerdrKeys(paneId: realId, remote: remote, ["Tab", "Enter"])
-            }
+            _ = runHerdrKeys(paneId: realId, remote: remote, ["Enter"])
         }
     }
 
