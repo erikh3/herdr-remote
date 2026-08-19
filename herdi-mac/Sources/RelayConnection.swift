@@ -371,7 +371,7 @@ final class RelayConnection {
             // delivers custom text via the "Other" option which submits the
             // already-toggled checkboxes together.
             if agent.isQuestion, agent.promptId != nil {
-                beginResponding(paneId, seconds: 3)
+                beginResponding(paneId, seconds: 5)
                 directRespondToQuestion(agent: agent, text: response.text)
             } else {
                 let remote = agent.host == "local" ? nil : agent.host
@@ -526,11 +526,25 @@ final class RelayConnection {
                     } else {
                         _ = runSSH(remote!, "herdr", "pane", "send-text", paneId, text)
                     }
-                    // The editor commits on Enter ("enter or ctrl+q submit") for
-                    // both single- and multi-select — the custom answer is sent
-                    // together with any already-toggled checkboxes. (Esc CANCELS
-                    // and discards the text, so never use it here.)
+                    // The editor commits the typed answer on Enter
+                    // ("enter or ctrl+q submit"; Esc would CANCEL and discard it).
                     _ = runHerdrKeys(paneId: paneId, remote: remote, ["Enter"])
+                    guard question.isMultiSelect else { return }
+                    // Multi-select: the first Enter only confirms the custom text
+                    // into "Other" and returns to the dialog with all boxes still
+                    // staged. A second Enter submits the whole dialog. Wait for
+                    // the dialog (not the editor) before sending it.
+                    let submitDeadline = Date().addingTimeInterval(1.5)
+                    while Date() < submitDeadline {
+                        let dialog = readPaneRecent(paneId, remote: remote, lines: 40)
+                        let inEditor = dialog.contains("Enter your response:")
+                            || (dialog.contains("Custom answer:") && dialog.lowercased().contains("submit"))
+                        if !inEditor, dialog.contains("Space toggle") || dialog.contains("Enter submit") {
+                            _ = runHerdrKeys(paneId: paneId, remote: remote, ["Enter"])
+                            return
+                        }
+                        Thread.sleep(forTimeInterval: 0.05)
+                    }
                     return
                 }
                 Thread.sleep(forTimeInterval: 0.05)
