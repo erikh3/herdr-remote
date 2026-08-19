@@ -211,19 +211,24 @@ final class RelayConnection {
         KeychainHelper.deletePassword(for: remote)
     }
 
+    /// Strip the "host:" prefix from a pane id for remote agents.
+    private func realPaneId(_ id: String, remote: String?) -> String {
+        remote == nil ? id : String(id.drop(while: { $0 != ":" }).dropFirst())
+    }
+
+    /// Read recent pane output (local or via ssh).
+    private func readPaneRecent(_ paneId: String, remote: String?, lines: Int = 100) -> String {
+        if let remote {
+            return runSSH(remote, "herdr", "pane", "read", paneId, "--lines", String(lines), "--source", "recent")
+        }
+        return runHerdr("pane", "read", paneId, "--lines", String(lines), "--source", "recent")
+    }
+
     private func readPaneForBlocked(_ agent: Agent, remote: String? = nil) {
-        // Extract the real pane_id (strip host prefix if present)
-        let paneId = agent.id.contains(":") && remote != nil
-            ? String(agent.id.drop(while: { $0 != ":" }).dropFirst())
-            : agent.id
+        let paneId = realPaneId(agent.id, remote: remote)
 
         DispatchQueue.global(qos: .utility).async { [self] in
-            let raw: String
-            if let remote {
-                raw = runSSH(remote, "herdr", "pane", "read", paneId, "--lines", "100", "--source", "recent")
-            } else {
-                raw = runHerdr("pane", "read", paneId, "--lines", "100", "--source", "recent")
-            }
+            let raw = readPaneRecent(paneId, remote: remote)
 
             let question = QuestionParser.detectQuestion(raw)
             let promptId = QuestionParser.promptId(paneId: agent.id, content: raw)
@@ -278,21 +283,23 @@ final class RelayConnection {
         }
     }
 
-    private func runHerdr(_ args: String...) -> String {
+    /// Run herdr, returning stdout and whether the process exited 0.
+    private func runHerdrChecked(_ args: [String]) -> (output: String, ok: Bool) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: herdrPath)
-        process.arguments = Array(args)
+        process.arguments = args
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
         do {
             try process.run()
             process.waitUntilExit()
-            return String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        } catch {
-            return ""
-        }
+            let out = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            return (out, process.terminationStatus == 0)
+        } catch { return ("", false) }
     }
+
+    private func runHerdr(_ args: String...) -> String { runHerdrChecked(Array(args)).output }
 
     // MARK: - Relay Mode (WebSocket)
 
@@ -330,13 +337,13 @@ final class RelayConnection {
             if agent.promptId != nil, (agent.options?.isEmpty == false) {
                 directRespondToQuestion(agent: agent, text: response.text)
             } else {
+                let remote = agent.host == "local" ? nil : agent.host
+                let realId = realPaneId(paneId, remote: remote)
                 DispatchQueue.global(qos: .userInitiated).async { [self] in
-                    let remote = agent.host == "local" ? nil : agent.host
                     if let remote {
-                        let realId = String(paneId.drop(while: { $0 != ":" }).dropFirst())
                         _ = runSSH(remote, "herdr", "pane", "send-text", realId, response.text + "\n")
                     } else {
-                        _ = runHerdrRaw(["pane", "send-text", paneId, response.text + "\n"])
+                        _ = runHerdrRaw(["pane", "send-text", realId, response.text + "\n"])
                     }
                 }
             }
@@ -356,13 +363,10 @@ final class RelayConnection {
         }
         // Direct mode: navigate cursor to the option and press Enter to toggle.
         guard let agent = agents.first(where: { $0.id == paneId }) else { return }
+        let remote = agent.host == "local" ? nil : agent.host
+        let realId = realPaneId(paneId, remote: remote)
         DispatchQueue.global(qos: .userInitiated).async { [self] in
-            let remote = agent.host == "local" ? nil : agent.host
-            let realId = remote == nil ? paneId
-                : String(paneId.drop(while: { $0 != ":" }).dropFirst())
-            let raw = remote == nil
-                ? runHerdr("pane", "read", realId, "--lines", "100", "--source", "recent")
-                : runSSH(remote!, "herdr", "pane", "read", realId, "--lines", "100", "--source", "recent")
+            let raw = readPaneRecent(realId, remote: remote)
             guard let question = QuestionParser.detectQuestion(raw), question.isMultiSelect else { return }
             guard let target = question.options.firstIndex(where: {
                 $0.label.caseInsensitiveCompare(option) == .orderedSame
@@ -384,13 +388,10 @@ final class RelayConnection {
         }
         // Direct mode: move to "Done selecting" and Enter, else Tab+Enter to Submit.
         guard let agent = agents.first(where: { $0.id == paneId }) else { return }
+        let remote = agent.host == "local" ? nil : agent.host
+        let realId = realPaneId(paneId, remote: remote)
         DispatchQueue.global(qos: .userInitiated).async { [self] in
-            let remote = agent.host == "local" ? nil : agent.host
-            let realId = remote == nil ? paneId
-                : String(paneId.drop(while: { $0 != ":" }).dropFirst())
-            let raw = remote == nil
-                ? runHerdr("pane", "read", realId, "--lines", "100", "--source", "recent")
-                : runSSH(remote!, "herdr", "pane", "read", realId, "--lines", "100", "--source", "recent")
+            let raw = readPaneRecent(realId, remote: remote)
             guard let question = QuestionParser.detectQuestion(raw), question.isMultiSelect else { return }
             if let done = question.options.firstIndex(where: { $0.label.contains("Done selecting") }) {
                 let steps = done - question.selectedIndex
@@ -432,43 +433,25 @@ final class RelayConnection {
     @discardableResult
     private func runHerdrKeys(paneId: String, remote: String?, _ keys: [String]) -> Bool {
         guard !keys.isEmpty else { return true }
-        let output: String
         if let remote {
-            output = runSSH(remote, "herdr", "pane", "send-keys", paneId, keys.joined(separator: " "))
-        } else {
-            output = runHerdrRaw(["pane", "send-keys", paneId] + keys)
+            let output = runSSH(remote, "herdr", "pane", "send-keys", paneId, keys.joined(separator: " "))
+            return !output.contains("\"error\"")
         }
-        return !output.contains("\"error\"")
+        let (output, ok) = runHerdrChecked(["pane", "send-keys", paneId] + keys)
+        return ok && !output.contains("\"error\"")
     }
 
-    /// runHerdr variant taking an array (existing runHerdr is variadic).
-    private func runHerdrRaw(_ args: [String]) -> String {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: herdrPath)
-        process.arguments = args
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        do {
-            try process.run()
-            process.waitUntilExit()
-            return String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        } catch { return "" }
-    }
+    private func runHerdrRaw(_ args: [String]) -> String { runHerdrChecked(args).output }
 
     /// Cursor-navigation response, ported from respond_to_question
     /// (relay/herdr_relay.py:569-603). Runs off the main thread.
     private func directRespondToQuestion(agent: Agent, text: String) {
+        let remote = agent.host == "local" ? nil : agent.host
+        let paneId = realPaneId(agent.id, remote: remote)
         DispatchQueue.global(qos: .userInitiated).async { [self] in
-            let remote = agent.host == "local" ? nil : agent.host
-            let paneId = remote == nil ? agent.id
-                : String(agent.id.drop(while: { $0 != ":" }).dropFirst())
-            let raw = remote == nil
-                ? runHerdr("pane", "read", paneId, "--lines", "100", "--source", "recent")
-                : runSSH(remote!, "herdr", "pane", "read", paneId, "--lines", "100", "--source", "recent")
+            let raw = readPaneRecent(paneId, remote: remote)
             guard let question = QuestionParser.detectQuestion(raw) else {
                 // Fallback: type the text + Enter (permission / free-form).
-                _ = runHerdrKeys(paneId: paneId, remote: remote, [])
                 if remote == nil {
                     _ = runHerdrRaw(["pane", "send-text", paneId, text + "\n"])
                 } else {
@@ -491,9 +474,7 @@ final class RelayConnection {
             // Wait up to 1.5s for the custom-answer editor, then type text.
             let deadline = Date().addingTimeInterval(1.5)
             while Date() < deadline {
-                let editor = remote == nil
-                    ? runHerdr("pane", "read", paneId, "--lines", "40", "--source", "recent")
-                    : runSSH(remote!, "herdr", "pane", "read", paneId, "--lines", "40", "--source", "recent")
+                let editor = readPaneRecent(paneId, remote: remote, lines: 40)
                 if editor.contains("Enter your response:")
                     || (editor.contains("Custom answer:") && editor.lowercased().contains("submit")) {
                     if remote == nil {
