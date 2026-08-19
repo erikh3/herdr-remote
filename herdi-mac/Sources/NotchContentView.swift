@@ -772,13 +772,14 @@ private struct MultiQuestionFormView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(form.isComplete ? Color.blue.opacity(0.8) : .white.opacity(0.08))
+                    )
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .foregroundStyle(form.isComplete ? .white : .white.opacity(0.4))
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(form.isComplete ? Color.blue.opacity(0.8) : .white.opacity(0.08))
-            )
             .disabled(!form.isComplete)
             .keyboardShortcut(.return, modifiers: .command)
         }
@@ -848,6 +849,14 @@ private struct FormQuestionSection: View {
                     RoundedRectangle(cornerRadius: 6)
                         .stroke(.white.opacity(0.08), lineWidth: 0.5)
                 )
+                .onChange(of: question.customText) { _, newValue in
+                    // Single-select: options and custom text are mutually
+                    // exclusive, so typing clears the radio choice.
+                    if !question.isMultiSelect,
+                       !newValue.trimmingCharacters(in: .whitespaces).isEmpty {
+                        question.selected = []
+                    }
+                }
         }
     }
 
@@ -870,8 +879,10 @@ private struct FormQuestionSection: View {
                 question.selected.insert(option)
             }
         } else {
-            // Single-select: replace the selection.
+            // Single-select: replace the selection and drop any custom text
+            // (options and custom text are mutually exclusive here).
             question.selected = [option]
+            question.customText = ""
         }
     }
 }
