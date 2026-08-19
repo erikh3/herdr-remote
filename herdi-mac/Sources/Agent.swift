@@ -22,6 +22,9 @@ final class Agent: Identifiable {
     /// True when the blocked prompt is an omp `ask` question (options are
     /// verbatim answers, not permission keywords). Drives raw-label rendering.
     var isQuestion = false
+    /// Total questions in a multi-question ask (nil for single/none). Shown as
+    /// a queue indicator in the notch.
+    var questionTotal: Int? = nil
 
     init(id: String, name: String, status: AgentStatus, project: String, cwd: String, host: String = "local") {
         self.id = id

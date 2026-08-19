@@ -139,6 +139,7 @@ final class RelayConnection {
                                 existing.selectedOptions = []
                                 existing.isMultiSelect = false
                                 existing.isQuestion = false
+                                existing.questionTotal = nil
                             }
                             existing.status = a.status
                         } else if a.status == .blocked, !isResponding(existing.id) {
@@ -265,13 +266,14 @@ final class RelayConnection {
                               && !$0.label.contains("Done selecting") }
                     .map { $0.label }
                 let displayPrompt = question.text.isEmpty ? "(question)" : question.text
+                let total = QuestionParser.questionCount(raw)
 
                 DispatchQueue.main.async {
                     let changed = agent.promptId != promptId
                     agent.prompt = displayPrompt
                     agent.promptId = promptId
-                    agent.isMultiSelect = question.isMultiSelect
                     agent.isQuestion = true
+                    agent.questionTotal = total
                     if question.isMultiSelect {
                         agent.options = nil
                         agent.multiOptions = visible
@@ -300,6 +302,7 @@ final class RelayConnection {
                 agent.promptId = promptId
                 agent.isMultiSelect = false
                 agent.isQuestion = false
+                agent.questionTotal = nil
                 agent.multiOptions = []
                 agent.selectedOptions = []
                 agent.options = approval.isEmpty

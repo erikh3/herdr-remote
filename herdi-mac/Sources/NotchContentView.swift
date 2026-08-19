@@ -570,6 +570,17 @@ private struct ApprovalCard: View {
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.5))
 
+                if let total = agent.questionTotal, total > 1 {
+                    Text("\(total) questions")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            Capsule().fill(.white.opacity(0.12))
+                        )
+                }
+
                 Spacer()
 
                 Button { relay.interruptPane(agent.id) } label: {

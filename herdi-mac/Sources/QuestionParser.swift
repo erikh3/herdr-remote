@@ -159,6 +159,24 @@ enum QuestionParser {
             .filter { $0 != questionOther && !$0.contains("Done selecting") }
     }
 
+    /// Total questions in a multi-question omp ask, parsed from the preview
+    /// header line "Ask N questions". Returns nil for single-question asks
+    /// (whose header is just "Ask") or when no such header is present.
+    static func questionCount(_ text: String) -> Int? {
+        for raw in text.components(separatedBy: "\n") {
+            // Match "... Ask <N> questions ..." anywhere on the line.
+            guard let askRange = raw.range(of: "Ask ") else { continue }
+            let after = raw[askRange.upperBound...]
+            let digits = after.prefix { $0.isNumber }
+            guard !digits.isEmpty, let n = Int(digits) else { continue }
+            let rest = after[after.index(after.startIndex, offsetBy: digits.count)...]
+            if rest.trimmingCharacters(in: .whitespaces).hasPrefix("question") {
+                return n
+            }
+        }
+        return nil
+    }
+
     // Manual hex: String(format:"%02x") emits zeros under this toolchain's optimizer.
     private static let hexDigits = Array("0123456789abcdef")
     private static func hex(_ bytes: [UInt8]) -> String {

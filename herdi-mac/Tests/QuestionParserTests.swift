@@ -97,6 +97,16 @@ expect(QuestionParser.promptId(paneId: "p1", content: ASK_SCREEN) == "8ea5fa454b
 expect(QuestionParser.promptId(paneId: "p1", content: "random blocked prompt") == "fbd2cd6c2ceef9f14daa",
        "promptId matches Python golden hash for non-question fallback")
 
+// --- multi-question count ---
+expect(QuestionParser.questionCount("╭─── Ask 3 questions ───────╮\n│ Env? │") == 3,
+       "questionCount parses 'Ask 3 questions'")
+expect(QuestionParser.questionCount("╭─ Ask ─╮\n│ Which color? │") == nil,
+       "questionCount nil for single-question ask")
+expect(QuestionParser.questionCount("no ask header here") == nil,
+       "questionCount nil when absent")
+expect(QuestionParser.questionCount("╭── Ask 12 questions ──╮") == 12,
+       "questionCount parses multi-digit count")
+
 // --- Finding 2: CRLF regression ---
 let ASK_CRLF = ASK_SCREEN.replacingOccurrences(of: "\n", with: "\r\n")
 expect(QuestionParser.detectQuestion(ASK_CRLF)?.options.map { $0.label } == ["Red", "Blue", "Green", "Other (type your own)"],
