@@ -609,7 +609,7 @@ private struct ApprovalCard: View {
             if let form = agent.form {
                 MultiQuestionFormView(form: form) { submitForm(form) }
                     .padding(.horizontal, 12)
-                    .padding(.bottom, 12)
+                    .padding(.bottom, 18)
             } else {
             // Prompt / diff content
             ScrollView {
@@ -731,7 +731,7 @@ private struct ApprovalCard: View {
                 .keyboardShortcut(.return, modifiers: .command)
             }
             .padding(.horizontal, 12)
-            .padding(.bottom, 12)
+            .padding(.bottom, 18)
             }
         }
     }
