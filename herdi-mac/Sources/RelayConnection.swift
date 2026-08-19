@@ -122,6 +122,15 @@ final class RelayConnection {
                         if existing.status != a.status {
                             if a.status == .blocked && existing.status != .blocked {
                                 readPaneForBlocked(existing, remote: a.host == "local" ? nil : a.host)
+                            } else if existing.status == .blocked && a.status != .blocked {
+                                // Left blocked (answered in TUI): drop stale prompt.
+                                existing.prompt = nil
+                                existing.promptId = nil
+                                existing.options = nil
+                                existing.multiOptions = []
+                                existing.selectedOptions = []
+                                existing.isMultiSelect = false
+                                existing.isQuestion = false
                             }
                             existing.status = a.status
                         }

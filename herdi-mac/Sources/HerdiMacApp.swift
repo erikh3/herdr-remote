@@ -184,6 +184,15 @@ class HerdiAppDelegate: NSObject, NSApplicationDelegate {
                     }
                 }
 
+                // Auto-collapse the approval card once its agent is no longer
+                // blocked (e.g. answered directly in the omp TUI) or is gone.
+                if case let .approval(agentId) = self.panelController?.surface,
+                   !blocked.contains(where: { $0.id == agentId }) {
+                    withAnimation(NotchAnimation.close) {
+                        self.panelController?.surface = .collapsed
+                    }
+                }
+
                 // Rebuild menu every 5s for fresh status
                 self.rebuildMenu()
             }
