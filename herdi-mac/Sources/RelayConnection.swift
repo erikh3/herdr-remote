@@ -138,6 +138,7 @@ final class RelayConnection {
                                 existing.multiOptions = []
                                 existing.selectedOptions = []
                                 existing.isMultiSelect = false
+                                existing.isGuardian = false
                                 existing.isQuestion = false
                                 existing.questionTotal = nil
                                 existing.form = nil
@@ -266,8 +267,39 @@ final class RelayConnection {
                     agent.promptId = nil
                     agent.options = nil
                     agent.isQuestion = false
+                    agent.isGuardian = false
                     agent.questionTotal = nil
                     agent.form = nil
+                }
+                return
+            }
+
+            // omp permission-guard approval prompt: a distinct widget with fixed
+            // Allow/Deny options. Render the pending call as the prompt and the
+            // verbatim options as buttons; navigate by cursor + Enter like a radio.
+            if let guardian = QuestionParser.detectGuardianPrompt(raw) {
+                let gPromptId = QuestionParser.promptId(
+                    paneId: agent.id, content: "guard:\(guardian.tool):\(guardian.command)")
+                let displayPrompt = guardian.command.isEmpty
+                    ? "Approve \(guardian.tool)?"
+                    : "$ \(guardian.command)"
+                DispatchQueue.main.async {
+                    let changed = agent.promptId != gPromptId
+                    agent.prompt = displayPrompt
+                    agent.promptId = gPromptId
+                    agent.isQuestion = true
+                    agent.isGuardian = true
+                    agent.isMultiSelect = false
+                    agent.questionTotal = nil
+                    agent.form = nil
+                    agent.optionDescriptions = [:]
+                    agent.multiOptions = []
+                    agent.selectedOptions = []
+                    agent.options = guardian.options
+                    if changed {
+                        agent.customDraft = ""
+                        self.sendNotification(agent: agent.name, project: agent.project)
+                    }
                 }
                 return
             }
@@ -347,6 +379,7 @@ final class RelayConnection {
                     agent.optionDescriptions = descriptions
                     agent.form = nil
                     agent.isMultiSelect = question.isMultiSelect
+                    agent.isGuardian = false
                     if question.isMultiSelect {
                         agent.options = nil
                         agent.multiOptions = visible
@@ -377,6 +410,7 @@ final class RelayConnection {
                 agent.prompt = String(tail.prefix(500))
                 agent.promptId = promptId
                 agent.isMultiSelect = false
+                agent.isGuardian = false
                 agent.isQuestion = false
                 agent.questionTotal = nil
                 agent.form = nil
@@ -456,6 +490,13 @@ final class RelayConnection {
                 DispatchQueue.global(qos: .userInitiated).async { [self] in
                     _ = runHerdrRaw(["pane", "send-text", paneId, response.text + "\n"])
                 }
+                return
+            }
+            // Permission-guard prompt: navigate the radio list to the chosen
+            // option and Enter (no "Other" custom-text flow).
+            if agent.isGuardian, agent.promptId != nil {
+                beginResponding(paneId, seconds: 5)
+                directRespondToGuardian(agent: agent, text: response.text)
                 return
             }
             // A detected omp question (single or multi-select) navigates by
@@ -698,6 +739,73 @@ final class RelayConnection {
     }
 
     private func runHerdrRaw(_ args: [String]) -> String { runHerdrChecked(args).output }
+
+    /// Answer a permission-guard prompt: re-read the live widget, navigate the
+    /// radio list from the current cursor to the option whose label matches the
+    /// clicked button, then Enter. "Deny (type your own)" opens omp's editor;
+    /// when the user supplied custom text, type it and Enter to commit.
+    private func directRespondToGuardian(agent: Agent, text: String) {
+        let remote = agent.host == "local" ? nil : agent.host
+        let paneId = realPaneId(agent.id, remote: remote)
+        DispatchQueue.global(qos: .userInitiated).async { [self] in
+            let raw = readPaneRecent(paneId, remote: remote)
+            guard let guardian = QuestionParser.detectGuardianPrompt(raw) else {
+                // Fallback: type the text + Enter.
+                if remote == nil {
+                    _ = runHerdrRaw(["pane", "send-text", paneId, text + "\n"])
+                } else {
+                    _ = runSSH(remote!, "herdr", "pane", "send-text", paneId, text + "\n")
+                }
+                return
+            }
+            let exactMatch = guardian.options.firstIndex {
+                $0.caseInsensitiveCompare(text) == .orderedSame
+            }
+            if let target = exactMatch {
+                // Clicked one of the verbatim option buttons: navigate + Enter.
+                let steps = target - guardian.selectedIndex
+                let dir = steps >= 0 ? "Down" : "Up"
+                let navKeys = Array(repeating: dir, count: abs(steps))
+                if !navKeys.isEmpty {
+                    _ = runHerdrKeys(paneId: paneId, remote: remote, navKeys)
+                }
+                _ = runHerdrKeys(paneId: paneId, remote: remote, ["Enter"])
+                return
+            }
+            // Custom text: route through "Deny (type your own)" — navigate there,
+            // Enter to open the editor, type the reason, Enter to commit.
+            guard let denyOwn = guardian.options.firstIndex(where: {
+                $0.lowercased().contains("type your own")
+            }) else {
+                _ = runHerdrKeys(paneId: paneId, remote: remote, ["Enter"])
+                return
+            }
+            let steps = denyOwn - guardian.selectedIndex
+            let dir = steps >= 0 ? "Down" : "Up"
+            let navKeys = Array(repeating: dir, count: abs(steps))
+            if !navKeys.isEmpty {
+                _ = runHerdrKeys(paneId: paneId, remote: remote, navKeys)
+            }
+            guard runHerdrKeys(paneId: paneId, remote: remote, ["Enter"]) else { return }
+            // Wait for the editor, then type the reason and commit.
+            let deadline = Date().addingTimeInterval(1.5)
+            while Date() < deadline {
+                let editor = readPaneRecent(paneId, remote: remote, lines: 40)
+                if editor.contains("Enter your response:")
+                    || (editor.lowercased().contains("submit")
+                        && editor.contains("Custom")) {
+                    if remote == nil {
+                        _ = runHerdrRaw(["pane", "send-text", paneId, text])
+                    } else {
+                        _ = runSSH(remote!, "herdr", "pane", "send-text", paneId, text)
+                    }
+                    _ = runHerdrKeys(paneId: paneId, remote: remote, ["Enter"])
+                    return
+                }
+                Thread.sleep(forTimeInterval: 0.05)
+            }
+        }
+    }
 
     private func directRespondToQuestion(agent: Agent, text: String) {
         let remote = agent.host == "local" ? nil : agent.host

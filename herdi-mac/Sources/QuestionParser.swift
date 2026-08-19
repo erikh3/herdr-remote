@@ -35,6 +35,17 @@ struct MultiSubQuestion: Equatable {
     let options: [MultiQuestionOption]
 }
 
+/// omp's permission-guard approval prompt. This is a distinct widget from an
+/// `ask` question: it has fixed Allow/Deny options (no "Other (type your own)"),
+/// a header ("Permission guard: waiting for you to approve <tool>"), and the
+/// pending tool call shown in a box above the options.
+struct GuardianPrompt: Equatable {
+    let tool: String            // e.g. "bash"
+    let command: String         // the pending call, e.g. "cat /etc/passwd"
+    let options: [String]       // verbatim option labels, in display order
+    let selectedIndex: Int      // live cursor row
+}
+
 enum QuestionParser {
     static let questionOther = "Other (type your own)"
     static let toolOptions = ["yes, single permission", "trust, always allow", "no (tab to edit)"]
@@ -48,6 +59,9 @@ enum QuestionParser {
         ["\u{f046}", "\u{f096}", "\u{f14a}", "\u{2610}", "\u{2611}", "[ ]", "[x]", "[X]"]
     private static let checkedMarkers: Set<String> =
         ["\u{f046}", "\u{f14a}", "\u{2611}", "[x]", "[X]"]
+    /// Radio markers that indicate the selected/cursor row (filled circle).
+    private static let selectedMarkers: Set<String> =
+        ["\u{f192}", "\u{f046}", "\u{25c9}", "(o)"]
 
     /// Strip box gutters and whitespace, matching Python's
     /// `line.strip().strip("\u2502|").strip()`.
@@ -192,6 +206,57 @@ enum QuestionParser {
                 selectedIndex: selectedIndex, isMultiSelect: isMulti)
         }
         return nil
+    }
+
+    /// Detect omp's permission-guard approval prompt. Distinct from an `ask`
+    /// question: fixed Allow/Deny options (no "Other (type your own)"), a
+    /// "Permission guard: waiting for you to approve <tool>" header, and the
+    /// pending call shown in a box above. Options render flush to the box border
+    /// with a radio marker; the selected row uses the filled radio glyph.
+    static func detectGuardianPrompt(_ text: String) -> GuardianPrompt? {
+        let lines = text.components(separatedBy: "\n")
+        let waitMarker = "Permission guard: waiting for you to approve "
+        // Most recent header wins over stale scrollback.
+        var headerIndex: Int? = nil
+        var tool = ""
+        for i in lines.indices.reversed() {
+            let line = normalize(lines[i])
+            if let r = line.range(of: waitMarker) {
+                tool = String(line[r.upperBound...]).trimmingCharacters(in: .whitespaces)
+                headerIndex = i
+                break
+            }
+        }
+        guard let start = headerIndex else { return nil }
+
+        // Pending call: nearest "$ <cmd>" line in the box just above the header.
+        var command = ""
+        for i in stride(from: start - 1, through: max(0, start - 8), by: -1) {
+            let line = normalize(lines[i])
+            if line.hasPrefix("$ ") {
+                command = String(line.dropFirst(2)).trimmingCharacters(in: .whitespaces)
+                break
+            }
+        }
+
+        // Options: matchOption rows below the header, until the footer.
+        var options: [String] = []
+        var selectedIndex = 0
+        for raw in lines[(start + 1)...] {
+            let line = normalize(raw)
+            if line.isEmpty { continue }
+            if let m = matchOption(line) {
+                if selectedMarkers.contains(m.marker) { selectedIndex = options.count }
+                options.append(m.label)
+            } else if !options.isEmpty,
+                      line.contains("navigate") || line.contains("judged by")
+                        || line.contains("select") {
+                break
+            }
+        }
+        guard options.count >= 2 else { return nil }
+        return GuardianPrompt(
+            tool: tool, command: command, options: options, selectedIndex: selectedIndex)
     }
 
     // Port of detect_approval_options (relay/herdr_relay.py:437-443).

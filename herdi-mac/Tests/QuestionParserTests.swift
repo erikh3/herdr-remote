@@ -294,5 +294,24 @@ expect(descSubs.last?.text == "Capabilities?",
 expect(descSubs.last?.options.first { $0.label == "Cache" }?.description == "in-memory layer",
        "DESC_PREVIEW Cache description captured")
 
+// --- permission-guard approval prompt (real captured widget) ---
+if let guardian = loadFixture("live_guardian.txt") {
+    let g = QuestionParser.detectGuardianPrompt(guardian)
+    expect(g != nil, "live_guardian detected as guardian prompt")
+    expect(g?.tool == "bash", "live_guardian tool is bash")
+    expect(g?.command == "cat /etc/passwd", "live_guardian command captured")
+    expect(g?.options == ["Allow once", "Allow this exact call this session",
+                          "Deny (recommended)", "Deny (type your own)"],
+           "live_guardian option labels verbatim")
+    expect(g?.selectedIndex == 2, "live_guardian cursor on Deny (recommended)")
+    expect(QuestionParser.detectQuestion(guardian) == nil,
+           "guardian prompt is not parsed as an ask question")
+} else {
+    print("skip: live_guardian.txt not captured")
+}
+// A normal ask question must not be misdetected as a guardian prompt.
+expect(QuestionParser.detectGuardianPrompt(ASK_SCREEN) == nil,
+       "detectGuardianPrompt nil for a normal ask question")
+
 if failures > 0 { FileHandle.standardError.write(Data("\(failures) failure(s)\n".utf8)); exit(1) }
 print("ALL PASS")

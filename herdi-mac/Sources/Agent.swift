@@ -35,6 +35,9 @@ final class Agent: Identifiable {
     /// Per-option description subtext for the current question, keyed by label.
     /// Covers both single-select (`options`) and multi-select (`multiOptions`).
     var optionDescriptions: [String: String] = [:]
+    /// True when the blocked prompt is an omp permission-guard approval prompt
+    /// (fixed Allow/Deny options, navigated by cursor + Enter like a radio list).
+    var isGuardian = false
 
     init(id: String, name: String, status: AgentStatus, project: String, cwd: String, host: String = "local") {
         self.id = id
