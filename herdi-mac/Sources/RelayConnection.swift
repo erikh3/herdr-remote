@@ -477,8 +477,6 @@ final class RelayConnection {
 
     private func runHerdrRaw(_ args: [String]) -> String { runHerdrChecked(args).output }
 
-    /// Cursor-navigation response, ported from respond_to_question
-    /// (relay/herdr_relay.py:569-603). Runs off the main thread.
     private func directRespondToQuestion(agent: Agent, text: String) {
         let remote = agent.host == "local" ? nil : agent.host
         let paneId = realPaneId(agent.id, remote: remote)
@@ -528,15 +526,11 @@ final class RelayConnection {
                     } else {
                         _ = runSSH(remote!, "herdr", "pane", "send-text", paneId, text)
                     }
-                    // Submit. Single-select: Enter commits the custom answer.
-                    // Multi-select: exit the editor (Esc), move off "Other" onto
-                    // a regular option (Up), then Enter submits the checked boxes
-                    // together with the custom answer.
-                    if question.isMultiSelect {
-                        _ = runHerdrKeys(paneId: paneId, remote: remote, ["esc", "Up", "Enter"])
-                    } else {
-                        _ = runHerdrKeys(paneId: paneId, remote: remote, ["Enter"])
-                    }
+                    // The editor commits on Enter ("enter or ctrl+q submit") for
+                    // both single- and multi-select — the custom answer is sent
+                    // together with any already-toggled checkboxes. (Esc CANCELS
+                    // and discards the text, so never use it here.)
+                    _ = runHerdrKeys(paneId: paneId, remote: remote, ["Enter"])
                     return
                 }
                 Thread.sleep(forTimeInterval: 0.05)
