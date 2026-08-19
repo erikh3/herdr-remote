@@ -494,18 +494,29 @@ final class RelayConnection {
                 return
             }
             let labels = question.options.map { $0.label }
-            var targetIndex = labels.firstIndex { $0.caseInsensitiveCompare(text) == .orderedSame }
-            let custom = targetIndex == nil
-            if custom {
-                targetIndex = labels.firstIndex { $0 == QuestionParser.questionOther }
+            let matchIndex = labels.firstIndex { $0.caseInsensitiveCompare(text) == .orderedSame }
+            // Single-select with an exact option match: navigate + Enter.
+            // (Multi-select responses always arrive as custom text via the notch,
+            // so they fall through to the "Other" flow below, which submits the
+            // already-toggled boxes together with the typed answer.)
+            if !question.isMultiSelect, let target = matchIndex {
+                let steps = target - question.selectedIndex
+                let dir = steps >= 0 ? "Down" : "Up"
+                let navKeys = Array(repeating: dir, count: abs(steps)) + ["Enter"]
+                _ = runHerdrKeys(paneId: paneId, remote: remote, navKeys)
+                return
             }
-            guard let target = targetIndex else { return }
-            let steps = target - question.selectedIndex
-            let dir = steps >= 0 ? "Down" : "Up"
-            let navKeys = Array(repeating: dir, count: abs(steps)) + ["Enter"]
-            guard runHerdrKeys(paneId: paneId, remote: remote, navKeys) else { return }
-            guard custom else { return }
-            // Wait up to 1.5s for the custom-answer editor, then type text.
+
+            // Custom answer: "Other (type your own)" is always the LAST option.
+            // Navigate down enough to land on it deterministically (omp clamps
+            // the cursor at the last row), avoiding a miscount that would fire
+            // Enter on a regular option and submit early.
+            let downCount = max(labels.count, 1)
+            guard runHerdrKeys(paneId: paneId, remote: remote,
+                               Array(repeating: "Down", count: downCount)) else { return }
+            // Enter opens the custom-answer editor.
+            guard runHerdrKeys(paneId: paneId, remote: remote, ["Enter"]) else { return }
+            // Wait up to 1.5s for the editor, then type text.
             let deadline = Date().addingTimeInterval(1.5)
             while Date() < deadline {
                 let editor = readPaneRecent(paneId, remote: remote, lines: 40)
@@ -518,10 +529,9 @@ final class RelayConnection {
                         _ = runSSH(remote!, "herdr", "pane", "send-text", paneId, text)
                     }
                     // Submit. Single-select: Enter commits the custom answer.
-                    // Multi-select: the editor's Enter only confirms the text, so
-                    // exit back to the dialog (Esc), move the cursor off "Other"
-                    // onto a regular option (Up), then Enter submits the checked
-                    // boxes together with the custom answer.
+                    // Multi-select: exit the editor (Esc), move off "Other" onto
+                    // a regular option (Up), then Enter submits the checked boxes
+                    // together with the custom answer.
                     if question.isMultiSelect {
                         _ = runHerdrKeys(paneId: paneId, remote: remote, ["esc", "Up", "Enter"])
                     } else {
