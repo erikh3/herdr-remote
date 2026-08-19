@@ -347,19 +347,60 @@ final class RelayConnection {
     }
 
     func toggleQuestionOption(paneId: String, promptId: String, option: String) {
-        guard mode == .relay,
-              let data = try? JSONEncoder().encode(
+        if mode == .relay {
+            guard let data = try? JSONEncoder().encode(
                 QuestionToggleMessage(pane_id: paneId, prompt_id: promptId, option: option)
-              ) else { return }
-        task?.send(.string(String(data: data, encoding: .utf8)!)) { _ in }
+            ) else { return }
+            task?.send(.string(String(data: data, encoding: .utf8)!)) { _ in }
+            return
+        }
+        // Direct mode: navigate cursor to the option and press Enter to toggle.
+        guard let agent = agents.first(where: { $0.id == paneId }) else { return }
+        DispatchQueue.global(qos: .userInitiated).async { [self] in
+            let remote = agent.host == "local" ? nil : agent.host
+            let realId = remote == nil ? paneId
+                : String(paneId.drop(while: { $0 != ":" }).dropFirst())
+            let raw = remote == nil
+                ? runHerdr("pane", "read", realId, "--lines", "100", "--source", "recent")
+                : runSSH(remote!, "herdr", "pane", "read", realId, "--lines", "100", "--source", "recent")
+            guard let question = QuestionParser.detectQuestion(raw), question.isMultiSelect else { return }
+            guard let target = question.options.firstIndex(where: {
+                $0.label.caseInsensitiveCompare(option) == .orderedSame
+            }) else { return }
+            let steps = target - question.selectedIndex
+            let dir = steps >= 0 ? "Down" : "Up"
+            let keys = Array(repeating: dir, count: abs(steps)) + ["Enter"]
+            _ = runHerdrKeys(paneId: realId, remote: remote, keys)
+        }
     }
 
     func submitQuestion(paneId: String, promptId: String) {
-        guard mode == .relay,
-              let data = try? JSONEncoder().encode(
+        if mode == .relay {
+            guard let data = try? JSONEncoder().encode(
                 QuestionSubmitMessage(pane_id: paneId, prompt_id: promptId)
-              ) else { return }
-        task?.send(.string(String(data: data, encoding: .utf8)!)) { _ in }
+            ) else { return }
+            task?.send(.string(String(data: data, encoding: .utf8)!)) { _ in }
+            return
+        }
+        // Direct mode: move to "Done selecting" and Enter, else Tab+Enter to Submit.
+        guard let agent = agents.first(where: { $0.id == paneId }) else { return }
+        DispatchQueue.global(qos: .userInitiated).async { [self] in
+            let remote = agent.host == "local" ? nil : agent.host
+            let realId = remote == nil ? paneId
+                : String(paneId.drop(while: { $0 != ":" }).dropFirst())
+            let raw = remote == nil
+                ? runHerdr("pane", "read", realId, "--lines", "100", "--source", "recent")
+                : runSSH(remote!, "herdr", "pane", "read", realId, "--lines", "100", "--source", "recent")
+            guard let question = QuestionParser.detectQuestion(raw), question.isMultiSelect else { return }
+            if let done = question.options.firstIndex(where: { $0.label.contains("Done selecting") }) {
+                let steps = done - question.selectedIndex
+                let dir = steps >= 0 ? "Down" : "Up"
+                let keys = Array(repeating: dir, count: abs(steps)) + ["Enter"]
+                _ = runHerdrKeys(paneId: realId, remote: remote, keys)
+            } else if raw.contains("Submit") {
+                _ = runHerdrKeys(paneId: realId, remote: remote, ["Tab", "Enter"])
+            }
+        }
     }
 
     func focusPane(_ paneId: String) {
@@ -387,6 +428,8 @@ final class RelayConnection {
         }
     }
 
+    /// Send key names to a pane in direct mode (local or SSH).
+    @discardableResult
     private func runHerdrKeys(paneId: String, remote: String?, _ keys: [String]) -> Bool {
         guard !keys.isEmpty else { return true }
         let output: String
