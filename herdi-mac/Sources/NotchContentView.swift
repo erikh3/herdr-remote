@@ -628,7 +628,7 @@ private struct ApprovalCard: View {
                 }
                 .padding(.horizontal, 12)
             } else {
-                ResponseButtonGrid(options: agent.options) { response in
+                ResponseButtonGrid(options: agent.options, isQuestion: agent.isQuestion) { response in
                     respond(response)
                 }
                 .padding(.horizontal, 12)
@@ -672,6 +672,7 @@ private struct ApprovalCard: View {
         agent.prompt = nil
         agent.promptId = nil
         agent.options = nil
+        agent.isQuestion = false
         onDismiss()
     }
 
@@ -691,6 +692,7 @@ private struct ApprovalCard: View {
         agent.promptId = nil
         agent.multiOptions = []
         agent.selectedOptions = []
+        agent.isQuestion = false
         onDismiss()
     }
 }
@@ -701,17 +703,36 @@ private struct ApprovalCard: View {
 /// Maps raw option strings to clear UI with icons and keyboard shortcuts.
 private struct ResponseButtonGrid: View {
     let options: [String]?
+    var isQuestion: Bool = false
     let onRespond: (String) -> Void
 
     private var buttons: [ResponseAction] {
         guard let options else { return [] }
+        // Question options are verbatim answers: render the exact label with no
+        // permission-keyword remapping or truncation. Permission/subagent
+        // prompts keep the icon-labeled affordances.
+        if isQuestion {
+            return options.map {
+                ResponseAction(label: $0, icon: "circle", tint: .white.opacity(0.85),
+                               shortcut: nil, rawValue: $0)
+            }
+        }
         return options.map { mapOption($0) }
     }
 
     var body: some View {
-        HStack(spacing: 8) {
-            ForEach(buttons) { btn in
-                ResponseButton(action: btn) { onRespond(btn.rawValue) }
+        if isQuestion {
+            // Vertical list: question options can be long and numerous.
+            VStack(spacing: 6) {
+                ForEach(buttons) { btn in
+                    ResponseButton(action: btn) { onRespond(btn.rawValue) }
+                }
+            }
+        } else {
+            HStack(spacing: 8) {
+                ForEach(buttons) { btn in
+                    ResponseButton(action: btn) { onRespond(btn.rawValue) }
+                }
             }
         }
     }

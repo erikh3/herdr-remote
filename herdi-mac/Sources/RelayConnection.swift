@@ -247,6 +247,7 @@ final class RelayConnection {
                     agent.prompt = displayPrompt
                     agent.promptId = promptId
                     agent.isMultiSelect = question.isMultiSelect
+                    agent.isQuestion = true
                     if question.isMultiSelect {
                         agent.options = nil
                         agent.multiOptions = visible
@@ -273,6 +274,7 @@ final class RelayConnection {
                 agent.prompt = String(tail.prefix(500))
                 agent.promptId = promptId
                 agent.isMultiSelect = false
+                agent.isQuestion = false
                 agent.multiOptions = []
                 agent.selectedOptions = []
                 agent.options = approval.isEmpty
@@ -548,6 +550,7 @@ final class RelayConnection {
                     agent.selectedOptions = msg.selected_options ?? []
                     agent.interaction = msg.interaction
                     agent.isMultiSelect = msg.multi ?? false
+                    agent.isQuestion = msg.interaction == "omp_question"
                     agent.status = .blocked
                     if msg.update != true {
                         sendNotification(agent: agent.name, project: agent.project)

@@ -19,6 +19,9 @@ final class Agent: Identifiable {
     var selectedOptions: [String] = []
     var interaction: String?
     var isMultiSelect = false
+    /// True when the blocked prompt is an omp `ask` question (options are
+    /// verbatim answers, not permission keywords). Drives raw-label rendering.
+    var isQuestion = false
 
     init(id: String, name: String, status: AgentStatus, project: String, cwd: String, host: String = "local") {
         self.id = id
