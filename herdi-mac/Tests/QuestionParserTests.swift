@@ -196,5 +196,26 @@ if let described = loadFixture("live_described.txt") {
     print("skip: live_described.txt not captured")
 }
 
+// --- multi-question preview parsing ---
+if let preview = loadFixture("live_multipreview.txt") {
+    let subs = QuestionParser.parseMultiQuestionPreview(preview)
+    expect(subs.count == 2, "preview parses 2 sub-questions")
+    expect(subs.first?.key == "env", "preview first key is env")
+    expect(subs.first?.text == "Environment?", "preview first question text")
+    expect(subs.first?.isMultiSelect == false, "preview env is single-select")
+    expect(subs.first?.options.map { $0.label } == ["Staging", "Production"],
+           "preview env option labels")
+    expect(subs.last?.key == "caps", "preview second key is caps")
+    expect(subs.last?.isMultiSelect == true, "preview caps is multi-select")
+    expect(subs.last?.options.map { $0.label } == ["Cache", "Metrics", "Tracing"],
+           "preview caps option labels")
+    expect(subs.last?.options.allSatisfy { $0.multi && !$0.checked } == true,
+           "preview caps options are unchecked checkboxes")
+} else {
+    print("skip: live_multipreview.txt not captured")
+}
+expect(QuestionParser.parseMultiQuestionPreview(ASK_SCREEN).isEmpty,
+       "parseMultiQuestionPreview empty for single-question ask")
+
 if failures > 0 { FileHandle.standardError.write(Data("\(failures) failure(s)\n".utf8)); exit(1) }
 print("ALL PASS")

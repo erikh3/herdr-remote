@@ -1,0 +1,26 @@
+ The user wants me to call ask once with 2 questions, then wait idle.
+
+╭─── Ask 2 questions ────────────╮
+├─── [env] · options:2 ────┤
+│  Environment?                    │
+│    Staging                    │
+│    Production                 │
+├─── [caps] · multi · options:3 ──┤
+│  Capabilities?                   │
+│    Cache                      │
+│    Metrics                    │
+│    Tracing                    │
+╰───────────────────────╰
+
+ ⠼ Ask environment and capabilities ⟨esc⟩
+
+╭─ Ask ──────────╮
+│  env    caps    Submit           │
+│ Environment?                     │
+├───────┤
+│    Staging                 │
+│     Production              │
+│     Other (type your own)   │
+├───────┤
+│ Enter select · n note · ↑/↓ move · Tab/←/→ · Esc cancel │
+╰───────╰

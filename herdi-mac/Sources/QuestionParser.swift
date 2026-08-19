@@ -15,6 +15,24 @@ struct ParsedQuestion {
     let isMultiSelect: Bool
 }
 
+/// One option inside a multi-question preview sub-question.
+struct MultiQuestionOption: Equatable {
+    let label: String
+    let multi: Bool      // checkbox-style (vs radio single-select)
+    let checked: Bool    // preview shows a pre-checked box
+}
+
+/// One sub-question parsed from omp's multi-question preview box. omp renders
+/// a multi-question ask as a tabbed form; the preview box lists every tab
+/// ([key] section) with its question text and options, which is everything the
+/// notch needs to render all questions in a single card.
+struct MultiSubQuestion: Equatable {
+    let key: String              // omp's [key] identifier for the tab
+    let text: String             // question prompt
+    let isMultiSelect: Bool
+    let options: [MultiQuestionOption]
+}
+
 enum QuestionParser {
     static let questionOther = "Other (type your own)"
     static let toolOptions = ["yes, single permission", "trust, always allow", "no (tab to edit)"]
@@ -163,8 +181,9 @@ enum QuestionParser {
     /// header line "Ask N questions". Returns nil for single-question asks
     /// (whose header is just "Ask") or when no such header is present.
     static func questionCount(_ text: String) -> Int? {
-        for raw in text.components(separatedBy: "\n") {
-            // Match "... Ask <N> questions ..." anywhere on the line.
+        // Scan bottom-up so the most recent widget's header wins over any stale
+        // "Ask N questions" lines left in scrollback.
+        for raw in text.components(separatedBy: "\n").reversed() {
             guard let askRange = raw.range(of: "Ask ") else { continue }
             let after = raw[askRange.upperBound...]
             let digits = after.prefix { $0.isNumber }
@@ -175,6 +194,109 @@ enum QuestionParser {
             }
         }
         return nil
+    }
+
+    /// Parse omp's multi-question preview box into its sub-questions. omp
+    /// renders a multi-question ask as a tabbed form and mirrors every tab in a
+    /// preview box:
+    ///
+    ///     ╭───  Ask 2 questions ───╮
+    ///     ├─── [env] · options:2 ───┤
+    ///     │  Environment?          │
+    ///     │   ◉ Staging            │
+    ///     │   ○ Production         │
+    ///     ├─── [caps] · multi · options:3 ───┤
+    ///     │  Capabilities?         │
+    ///     │   ☐ Cache              │
+    ///     ╰───╯
+    ///
+    /// Returns the sub-questions of the most recent preview box, or an empty
+    /// array when the buffer has no multi-question preview.
+    static func parseMultiQuestionPreview(_ text: String) -> [MultiSubQuestion] {
+        let lines = text.components(separatedBy: "\n")
+        // Find the most recent "Ask N questions" preview header.
+        var headerIndex: Int? = nil
+        for index in lines.indices.reversed() {
+            guard let askRange = lines[index].range(of: "Ask ") else { continue }
+            let after = lines[index][askRange.upperBound...]
+            let digits = after.prefix { $0.isNumber }
+            guard !digits.isEmpty else { continue }
+            let rest = after[after.index(after.startIndex, offsetBy: digits.count)...]
+            if rest.trimmingCharacters(in: .whitespaces).hasPrefix("question") {
+                headerIndex = index
+                break
+            }
+        }
+        guard let start = headerIndex else { return [] }
+
+        // Walk downward, collecting [key] sections until the box closes (a
+        // bottom border with no bracketed key) or a new box opens.
+        var result: [MultiSubQuestion] = []
+        var key: String? = nil
+        var multiHeader = false
+        var questionLines: [String] = []
+        var options: [MultiQuestionOption] = []
+
+        func flush() {
+            guard let k = key else { return }
+            let isMulti = multiHeader || options.contains { $0.multi }
+            result.append(MultiSubQuestion(
+                key: k,
+                text: questionLines.joined(separator: " "),
+                isMultiSelect: isMulti,
+                options: options))
+        }
+
+        for raw in lines[(start + 1)...] {
+            let line = normalize(raw)
+            if let sectionKey = sectionHeaderKey(line) {
+                flush()
+                key = sectionKey
+                multiHeader = line.contains("multi")
+                questionLines = []
+                options = []
+                continue
+            }
+            // The box-closing bottom border ends the preview; stop before the
+            // interactive Ask widget (or any following box) leaks in.
+            if isBoxCloseBorder(line) { break }
+            if key == nil { continue }
+            if line.isEmpty { continue }
+            if let m = matchOption(line) {
+                options.append(MultiQuestionOption(
+                    label: m.label,
+                    multi: multiMarkers.contains(m.marker),
+                    checked: checkedMarkers.contains(m.marker)))
+            } else if line.contains(where: { $0.isLetter || $0.isNumber }) {
+                questionLines.append(line)
+            }
+        }
+        flush()
+        return result
+    }
+
+    /// Extract the `[key]` identifier from a preview section-header line such as
+    /// `─── [env] · options:2 ───`. Returns nil for non-header lines.
+    private static func sectionHeaderKey(_ line: String) -> String? {
+        guard let open = line.firstIndex(of: "["),
+              let close = line.firstIndex(of: "]"),
+              open < close else { return nil }
+        // A header is mostly box-drawing dashes around a bracketed key; require
+        // the line to start with box-drawing/dash chrome to avoid matching a
+        // question that merely contains brackets.
+        let prefix = line[line.startIndex..<open]
+        let chromeOnly = prefix.allSatisfy { "─-┄┈├┤┏┓┗┛╭╮╰╯│ ".contains($0) }
+        guard chromeOnly else { return nil }
+        let key = line[line.index(after: open)..<close]
+            .trimmingCharacters(in: .whitespaces)
+        return key.isEmpty ? nil : key
+    }
+
+    /// True for a normalized bottom-border line (begins with a bottom box
+    /// corner and carries no bracketed key or alphanumerics).
+    private static func isBoxCloseBorder(_ line: String) -> Bool {
+        guard let first = line.first, "╰╯└┘".contains(first) else { return false }
+        return !line.contains("[") && !line.contains(where: { $0.isLetter || $0.isNumber })
     }
 
     /// True when the pane shows omp's multi-question Review/Submit confirmation

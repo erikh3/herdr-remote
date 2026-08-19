@@ -140,6 +140,7 @@ final class RelayConnection {
                                 existing.isMultiSelect = false
                                 existing.isQuestion = false
                                 existing.questionTotal = nil
+                                existing.form = nil
                             }
                             existing.status = a.status
                         } else if a.status == .blocked, !isResponding(existing.id) {
@@ -266,12 +267,54 @@ final class RelayConnection {
                     agent.options = nil
                     agent.isQuestion = false
                     agent.questionTotal = nil
+                    agent.form = nil
                 }
                 return
             }
 
             let question = QuestionParser.detectQuestion(raw)
             let promptId = QuestionParser.promptId(paneId: agent.id, content: raw)
+
+            // Multi-question ask: omp renders every question as a tab and mirrors
+            // them in a preview box. Parse all of them and present one card that
+            // collects every answer, then drives the tabbed form on submit.
+            let subs = QuestionParser.parseMultiQuestionPreview(raw)
+            // Only treat as a live form when the interactive widget currently
+            // shows one of the parsed sub-questions; otherwise the preview is
+            // stale scrollback from an earlier multi-question ask.
+            let previewIsLive = subs.count > 1
+                && (question.map { q in subs.contains { $0.text == q.text } } ?? false)
+            if previewIsLive {
+                let total = QuestionParser.questionCount(raw)
+                // Stable id for the whole form so tab auto-advance (which changes
+                // the active question) doesn't re-pop the card or drop selections.
+                let formId = subs.map { "\($0.key)|\($0.text)|\($0.options.map { $0.label }.joined(separator: ","))" }
+                    .joined(separator: "\u{1e}")
+                DispatchQueue.main.async {
+                    let changed = agent.promptId != formId
+                    agent.isQuestion = true
+                    agent.promptId = formId
+                    agent.questionTotal = total
+                    agent.prompt = nil
+                    agent.options = nil
+                    agent.multiOptions = []
+                    agent.selectedOptions = []
+                    if changed {
+                        agent.form = MultiQuestionForm(questions: subs.map {
+                            FormQuestion(
+                                id: $0.key,
+                                text: $0.text,
+                                isMultiSelect: $0.isMultiSelect,
+                                options: $0.options
+                                    .map { $0.label }
+                                    .filter { $0 != QuestionParser.questionOther
+                                              && !$0.contains("Done selecting") })
+                        })
+                        self.sendNotification(agent: agent.name, project: agent.project)
+                    }
+                }
+                return
+            }
 
             if let question {
                 let visible = question.options
@@ -290,6 +333,7 @@ final class RelayConnection {
                     agent.promptId = promptId
                     agent.isQuestion = true
                     agent.questionTotal = total
+                    agent.form = nil
                     if question.isMultiSelect {
                         agent.options = nil
                         agent.multiOptions = visible
@@ -319,6 +363,7 @@ final class RelayConnection {
                 agent.isMultiSelect = false
                 agent.isQuestion = false
                 agent.questionTotal = nil
+                agent.form = nil
                 agent.multiOptions = []
                 agent.selectedOptions = []
                 agent.options = approval.isEmpty
@@ -463,6 +508,130 @@ final class RelayConnection {
             guard let question = QuestionParser.detectQuestion(raw), question.isMultiSelect else { return }
             _ = runHerdrKeys(paneId: realId, remote: remote, ["Enter"])
         }
+    }
+
+    /// Fill and submit omp's multi-question tabbed form in one pass. Direct mode
+    /// only (the notch drives omp locally). Re-reads the pane before each tab so
+    /// it syncs with omp's real cursor/tab state instead of counting keys blind.
+    func submitForm(paneId: String, form: MultiQuestionForm) {
+        guard mode == .direct,
+              let agent = agents.first(where: { $0.id == paneId }) else { return }
+        // Long window: driving every tab (with editor waits) takes a few seconds;
+        // keep the poll's still-blocked re-read from racing us until we finish.
+        beginResponding(paneId, seconds: 20)
+        let remote = agent.host == "local" ? nil : agent.host
+        let realId = realPaneId(paneId, remote: remote)
+        DispatchQueue.global(qos: .userInitiated).async { [self] in
+            driveForm(realId: realId, remote: remote, form: form)
+        }
+    }
+
+    private func driveForm(realId: String, remote: String?, form: MultiQuestionForm) {
+        // Bound iterations: one per question, plus slack for transitional frames
+        // and the final review screen.
+        let maxSteps = form.questions.count * 2 + 4
+        // Guard against re-filling a tab that failed to advance (which caused a
+        // retype loop); once a question's answer is applied, only Tab past it.
+        var answered: Set<String> = []
+        for _ in 0..<maxSteps {
+            let raw = readPaneRecent(realId, remote: remote)
+            if QuestionParser.isReviewScreen(raw) {
+                _ = runHerdrKeys(paneId: realId, remote: remote, ["Enter"])
+                return
+            }
+            guard let live = QuestionParser.detectQuestion(raw) else {
+                Thread.sleep(forTimeInterval: 0.3)
+                continue
+            }
+            guard let fq = form.questions.first(where: { $0.text == live.text }) else {
+                // Unknown tab (shouldn't happen): advance to avoid stalling.
+                _ = runHerdrKeys(paneId: realId, remote: remote, ["Tab"])
+                continue
+            }
+            if answered.contains(fq.id) {
+                // Already filled but still showing: advance past it with Tab.
+                _ = runHerdrKeys(paneId: realId, remote: remote, ["Tab"])
+                continue
+            }
+            applyAnswer(realId: realId, remote: remote, live: live, fq: fq)
+            answered.insert(fq.id)
+        }
+    }
+
+    /// Answer the currently-shown tab, then advance to the next tab. Navigation
+    /// clamps the cursor to the top first, so option indices are absolute
+    /// Down-steps. Advance keys differ by kind (Enter for single-select, Tab for
+    /// multi-select) to avoid re-opening omp's custom-text editor.
+    private func applyAnswer(realId: String, remote: String?, live: ParsedQuestion, fq: FormQuestion) {
+        let optCount = live.options.count
+        let custom = fq.customText.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Clamp cursor to the first option (omp clamps at the top row).
+        _ = runHerdrKeys(paneId: realId, remote: remote, Array(repeating: "Up", count: max(optCount, 1)))
+
+        if !custom.isEmpty {
+            // Route custom text through "Other" (always the last option).
+            let otherIndex = optCount - 1
+            if otherIndex > 0 {
+                _ = runHerdrKeys(paneId: realId, remote: remote, Array(repeating: "Down", count: otherIndex))
+            }
+            _ = runHerdrKeys(paneId: realId, remote: remote, ["Enter"]) // open editor
+            let deadline = Date().addingTimeInterval(1.5)
+            while Date() < deadline {
+                let editor = readPaneRecent(realId, remote: remote, lines: 40)
+                if editor.contains("Enter your response:")
+                    || (editor.contains("Custom answer:") && editor.lowercased().contains("submit")) {
+                    if remote == nil {
+                        _ = runHerdrRaw(["pane", "send-text", realId, custom])
+                    } else {
+                        _ = runSSH(remote!, "herdr", "pane", "send-text", realId, custom)
+                    }
+                    // Commit the typed text. On a single-select tab this Enter
+                    // also advances; on a multi-select tab it only commits and
+                    // leaves the cursor on "Other" (Enter there re-opens the
+                    // editor), so advance explicitly with Tab.
+                    _ = runHerdrKeys(paneId: realId, remote: remote, ["Enter"])
+                    if live.isMultiSelect {
+                        _ = runHerdrKeys(paneId: realId, remote: remote, ["Tab"])
+                    }
+                    return
+                }
+                Thread.sleep(forTimeInterval: 0.05)
+            }
+            return
+        }
+
+        if live.isMultiSelect {
+            // Walk every option top-to-bottom; Space-toggle those whose desired
+            // state differs from the live checked state.
+            for i in 0..<optCount {
+                let opt = live.options[i]
+                let isOther = opt.label == QuestionParser.questionOther
+                    || opt.label.contains("Done selecting")
+                if !isOther, fq.selected.contains(opt.label) != opt.checked {
+                    _ = runHerdrKeys(paneId: realId, remote: remote, ["Space"])
+                }
+                if i < optCount - 1 {
+                    _ = runHerdrKeys(paneId: realId, remote: remote, ["Down"])
+                }
+            }
+            // Advance with Tab, not Enter: after the toggle walk the cursor sits
+            // on "Other", where Enter would open the custom-text editor. Tab
+            // advances to the next tab from any cursor position and preserves
+            // the toggles.
+            _ = runHerdrKeys(paneId: realId, remote: remote, ["Tab"])
+            return
+        }
+
+        // Single-select: land on the chosen option, Enter advances.
+        guard let target = fq.selected.first,
+              let idx = live.options.firstIndex(where: { $0.label == target }) else {
+            _ = runHerdrKeys(paneId: realId, remote: remote, ["Enter"])
+            return
+        }
+        if idx > 0 {
+            _ = runHerdrKeys(paneId: realId, remote: remote, Array(repeating: "Down", count: idx))
+        }
+        _ = runHerdrKeys(paneId: realId, remote: remote, ["Enter"])
     }
 
     func focusPane(_ paneId: String) {

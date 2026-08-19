@@ -594,6 +594,11 @@ private struct ApprovalCard: View {
             .padding(.horizontal, 14)
             .padding(.top, 10)
 
+            if let form = agent.form {
+                MultiQuestionFormView(form: form) { submitForm(form) }
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 12)
+            } else {
             // Prompt / diff content
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
@@ -689,6 +694,7 @@ private struct ApprovalCard: View {
             }
             .padding(.horizontal, 12)
             .padding(.bottom, 12)
+            }
         }
     }
 
@@ -726,6 +732,147 @@ private struct ApprovalCard: View {
         agent.selectedOptions = []
         agent.isQuestion = false
         onDismiss()
+    }
+
+    private func submitForm(_ form: MultiQuestionForm) {
+        relay.submitForm(paneId: agent.id, form: form)
+        agent.status = .working
+        agent.prompt = nil
+        agent.promptId = nil
+        agent.form = nil
+        agent.isQuestion = false
+        agent.questionTotal = nil
+        onDismiss()
+    }
+}
+
+// MARK: - Multi-Question Form (all questions in one card)
+
+/// Renders every sub-question of an omp multi-question ask in a single card so
+/// the user answers all of them, then submits once. Replaces the fragile
+/// per-question answer-and-advance flow that raced omp's tabbed form.
+private struct MultiQuestionFormView: View {
+    let form: MultiQuestionForm
+    let onSubmit: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    ForEach(Array(form.questions.enumerated()), id: \.element.id) { index, question in
+                        FormQuestionSection(index: index + 1, question: question)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+            .frame(maxHeight: 320)
+
+            Button(action: onSubmit) {
+                Label("Submit all", systemImage: "checkmark.circle.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(form.isComplete ? .white : .white.opacity(0.4))
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(form.isComplete ? Color.blue.opacity(0.8) : .white.opacity(0.08))
+            )
+            .disabled(!form.isComplete)
+            .keyboardShortcut(.return, modifiers: .command)
+        }
+    }
+}
+
+/// One question block in the multi-question form: header + selectable rows +
+/// an inline custom-text field.
+private struct FormQuestionSection: View {
+    let index: Int
+    @Bindable var question: FormQuestion
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text("\(index)")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .frame(width: 16, height: 16)
+                    .background(Circle().fill(.white.opacity(0.1)))
+                Text(question.text)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white)
+                Spacer()
+                if question.isMultiSelect {
+                    Text("multi")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.5))
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(Capsule().fill(.white.opacity(0.1)))
+                }
+            }
+
+            ForEach(question.options, id: \.self) { option in
+                Button { select(option) } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: markerIcon(for: option))
+                            .font(.system(size: 12))
+                            .foregroundStyle(isSelected(option) ? .blue : .white.opacity(0.4))
+                        Text(option)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.white.opacity(0.9))
+                        Spacer()
+                    }
+                    .padding(.vertical, 5)
+                    .padding(.horizontal, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(isSelected(option) ? Color.blue.opacity(0.15) : .white.opacity(0.04))
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+
+            TextField("Custom answer…", text: $question.customText)
+                .textFieldStyle(.plain)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(.white.opacity(0.05))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(.white.opacity(0.08), lineWidth: 0.5)
+                )
+        }
+    }
+
+    private func isSelected(_ option: String) -> Bool {
+        question.selected.contains(option)
+    }
+
+    private func markerIcon(for option: String) -> String {
+        if question.isMultiSelect {
+            return isSelected(option) ? "checkmark.square.fill" : "square"
+        }
+        return isSelected(option) ? "largecircle.fill.circle" : "circle"
+    }
+
+    private func select(_ option: String) {
+        if question.isMultiSelect {
+            if question.selected.contains(option) {
+                question.selected.remove(option)
+            } else {
+                question.selected.insert(option)
+            }
+        } else {
+            // Single-select: replace the selection.
+            question.selected = [option]
+        }
     }
 }
 

@@ -25,6 +25,10 @@ final class Agent: Identifiable {
     /// Total questions in a multi-question ask (nil for single/none). Shown as
     /// a queue indicator in the notch.
     var questionTotal: Int? = nil
+    /// The full multi-question form when this ask has more than one question.
+    /// Non-nil replaces the single-question UI with an all-questions card that
+    /// collects every answer and submits omp's tabbed form once.
+    var form: MultiQuestionForm? = nil
 
     init(id: String, name: String, status: AgentStatus, project: String, cwd: String, host: String = "local") {
         self.id = id
@@ -34,6 +38,52 @@ final class Agent: Identifiable {
         self.cwd = cwd
         self.host = host
     }
+}
+
+/// One question inside a multi-question form, holding both the parsed options
+/// and the user's in-progress selection.
+@Observable
+final class FormQuestion: Identifiable {
+    let id: String            // omp's [key]
+    let text: String
+    let isMultiSelect: Bool
+    let options: [String]     // answer labels (excludes "Other")
+    /// Single-select: at most one label. Multi-select: any number.
+    var selected: Set<String> = []
+    /// Free-text answer typed via "Other"; overrides `selected` when non-empty.
+    var customText: String = ""
+
+    init(id: String, text: String, isMultiSelect: Bool, options: [String]) {
+        self.id = id
+        self.text = text
+        self.isMultiSelect = isMultiSelect
+        self.options = options
+    }
+
+    /// The answer for this question: custom text if provided, else the selected
+    /// labels. Empty when unanswered.
+    var answerLabels: [String] {
+        let trimmed = customText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty { return [trimmed] }
+        // Preserve option order for determinism when driving the form.
+        return options.filter { selected.contains($0) }
+    }
+
+    var isAnswered: Bool { !answerLabels.isEmpty }
+}
+
+/// A multi-question omp ask rendered as one notch card. Collects every answer,
+/// then drives omp's tabbed form to submit them together.
+@Observable
+final class MultiQuestionForm {
+    let questions: [FormQuestion]
+
+    init(questions: [FormQuestion]) {
+        self.questions = questions
+    }
+
+    /// True once every question has an answer (selection or custom text).
+    var isComplete: Bool { questions.allSatisfy { $0.isAnswered } }
 }
 
 struct AgentMessage: Decodable {
