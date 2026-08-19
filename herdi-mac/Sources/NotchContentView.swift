@@ -532,11 +532,19 @@ private struct AgentSessionRow: View {
 
 // MARK: - Approval Card (inline permission/question answering)
 
+private struct PromptHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 private struct ApprovalCard: View {
     let agent: Agent
     let relay: RelayConnection
     let onDismiss: () -> Void
     @State private var customResponse = ""
+    @State private var promptContentHeight: CGFloat = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -591,8 +599,15 @@ private struct ApprovalCard: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(6)
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear.preference(key: PromptHeightKey.self, value: proxy.size.height)
+                    }
+                )
             }
-            .frame(maxHeight: 160)
+            // Shrink to fit short prompts; scroll only when content exceeds the cap.
+            .frame(height: min(max(promptContentHeight, 24), 160))
+            .onPreferenceChange(PromptHeightKey.self) { promptContentHeight = $0 }
             .background(
                 RoundedRectangle(cornerRadius: 8)
                     .fill(.white.opacity(0.04))
