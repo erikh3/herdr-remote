@@ -280,14 +280,7 @@ final class RelayConnection {
             if let guardian = QuestionParser.detectGuardianPrompt(raw) {
                 let gPromptId = QuestionParser.promptId(
                     paneId: agent.id, content: "guard:\(guardian.title):\(guardian.options.joined(separator: ","))")
-                let displayPrompt: String
-                if guardian.title.isEmpty {
-                    displayPrompt = "Approve this action?"
-                } else if guardian.title.hasPrefix("bash: ") {
-                    displayPrompt = "$ \(guardian.title.dropFirst("bash: ".count))"
-                } else {
-                    displayPrompt = guardian.title
-                }
+                let displayPrompt = self.guardianDisplayTitle(guardian.title)
                 DispatchQueue.main.async {
                     let changed = agent.promptId != gPromptId
                     agent.prompt = displayPrompt
@@ -744,6 +737,31 @@ final class RelayConnection {
     }
 
     private func runHerdrRaw(_ args: [String]) -> String { runHerdrChecked(args).output }
+
+    /// Turn a raw guard title into a readable prompt. Tool calls arrive as
+    /// "<tool>: <args>"; when the args are a JSON object we surface the most
+    /// meaningful field (path/command/pattern/url/file) as "<tool> <value>"
+    /// instead of dumping raw JSON. bash calls render as "$ <command>". Prose
+    /// titles (e.g. skill loads) pass through unchanged.
+    private func guardianDisplayTitle(_ title: String) -> String {
+        if title.isEmpty { return "Approve this action?" }
+        guard let colon = title.firstIndex(of: ":") else { return title }
+        let tool = String(title[..<colon])
+        let rest = title[title.index(after: colon)...].trimmingCharacters(in: .whitespaces)
+        if tool == "bash" { return "$ \(rest)" }
+        // Non-JSON args: show "tool rest" plainly.
+        guard rest.hasPrefix("{"),
+              let data = rest.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return rest.isEmpty ? tool : "\(tool) \(rest)"
+        }
+        let preferred = ["command", "cmd", "pattern", "query", "url",
+                         "path", "file", "file_path"]
+        let value = preferred.compactMap { obj[$0] as? String }.first
+            ?? obj.values.compactMap { $0 as? String }.first
+        if let value { return "\(tool) \(value)" }
+        return "\(tool) \(rest)"
+    }
 
     /// Answer a permission-guard prompt: re-read the live widget, navigate the
     /// radio list from the current cursor to the option whose label matches the
