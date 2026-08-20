@@ -279,14 +279,14 @@ final class RelayConnection {
             // verbatim options as buttons; navigate by cursor + Enter like a radio.
             if let guardian = QuestionParser.detectGuardianPrompt(raw) {
                 let gPromptId = QuestionParser.promptId(
-                    paneId: agent.id, content: "guard:\(guardian.tool):\(guardian.command)")
+                    paneId: agent.id, content: "guard:\(guardian.title):\(guardian.options.joined(separator: ","))")
                 let displayPrompt: String
-                if guardian.command.isEmpty {
-                    displayPrompt = "Approve \(guardian.tool)?"
-                } else if guardian.tool == "bash" {
-                    displayPrompt = "$ \(guardian.command)"
+                if guardian.title.isEmpty {
+                    displayPrompt = "Approve this action?"
+                } else if guardian.title.hasPrefix("bash: ") {
+                    displayPrompt = "$ \(guardian.title.dropFirst("bash: ".count))"
                 } else {
-                    displayPrompt = "\(guardian.tool): \(guardian.command)"
+                    displayPrompt = guardian.title
                 }
                 DispatchQueue.main.async {
                     let changed = agent.promptId != gPromptId

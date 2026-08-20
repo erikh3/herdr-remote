@@ -35,13 +35,13 @@ struct MultiSubQuestion: Equatable {
     let options: [MultiQuestionOption]
 }
 
-/// omp's permission-guard approval prompt. This is a distinct widget from an
-/// `ask` question: it has fixed Allow/Deny options (no "Other (type your own)"),
-/// a header ("Permission guard: waiting for you to approve <tool>"), and the
-/// pending tool call shown in a box above the options.
+/// omp's permission-guard approval prompt. A distinct widget from an `ask`
+/// question: fixed Allow/Deny options (no "Other (type your own)") and a
+/// navigate/select/cancel footer. Covers every guard variant — tool-call
+/// approvals (bash/read/…) and non-tool approvals (skill loads) — via a single
+/// `title` line (the pending call or the prose question) shown above the options.
 struct GuardianPrompt: Equatable {
-    let tool: String            // e.g. "bash"
-    let command: String         // the pending call, e.g. "cat /etc/passwd"
+    let title: String           // pending call or prose question, verbatim
     let options: [String]       // verbatim option labels, in display order
     let selectedIndex: Int      // live cursor row
 }
@@ -208,58 +208,74 @@ enum QuestionParser {
         return nil
     }
 
-    /// Detect omp's permission-guard approval prompt. Distinct from an `ask`
-    /// question: fixed Allow/Deny options (no "Other (type your own)"), a
-    /// "Permission guard: waiting for you to approve <tool>" header, and the
-    /// pending call rendered below the header as a "<tool>: <args>" line.
-    /// Options render flush to the box border with a radio marker; the selected
-    /// row uses the filled radio glyph.
+    /// Detect omp's permission-guard approval prompt. Anchored on the guard's
+    /// navigate/select/cancel footer (distinct from an `ask`'s "Enter select ·
+    /// … move" footer), so it covers every variant regardless of whether a
+    /// "Permission guard: waiting to approve" header is present:
+    ///   - tool-call approvals (bash/read/…): title is the "<tool>: <args>" call
+    ///   - skill loads / other approvals: title is the prose question line
     static func detectGuardianPrompt(_ text: String) -> GuardianPrompt? {
         let lines = text.components(separatedBy: "\n")
-        let waitMarker = "Permission guard: waiting for you to approve "
-        // Most recent header wins over stale scrollback.
-        var headerIndex: Int? = nil
-        var tool = ""
+        // Footer is the reliable, variant-independent anchor. Match its distinct
+        // wording ("navigate" + "select" + "cancel") to avoid an ask's footer.
+        var footerIndex: Int? = nil
         for i in lines.indices.reversed() {
             let line = normalize(lines[i])
-            if let r = line.range(of: waitMarker) {
-                tool = String(line[r.upperBound...]).trimmingCharacters(in: .whitespaces)
-                headerIndex = i
+            if line.contains("navigate") && line.contains("select")
+                && line.contains("cancel") {
+                footerIndex = i
                 break
             }
         }
-        guard let start = headerIndex else { return nil }
+        guard let footer = footerIndex else { return nil }
 
-        // Below the header omp shows the guard's rationale, then the pending call
-        // as a "<tool>: <args>" line, then the options. Capture the pending call
-        // and the options in one downward pass.
-        var command = ""
-        var options: [String] = []
-        var selectedIndex = 0
-        let callPrefix = tool.isEmpty ? nil : "\(tool):"
-        for raw in lines[(start + 1)...] {
-            let line = normalize(raw)
-            if line.isEmpty { continue }
+        // Options are the matchOption rows just above the footer. Walk upward,
+        // skipping blank/separator lines, collecting contiguous option rows.
+        var optionRows: [(index: Int, label: String, selected: Bool)] = []
+        var i = footer - 1
+        while i >= 0 {
+            let line = normalize(lines[i])
+            if line.isEmpty || isSeparatorLine(line) { i -= 1; continue }
             if let m = matchOption(line) {
-                if selectedMarkers.contains(m.marker) { selectedIndex = options.count }
-                options.append(m.label)
+                optionRows.append((i, m.label, selectedMarkers.contains(m.marker)))
+                i -= 1
                 continue
             }
-            if !options.isEmpty,
-               line.contains("navigate") || line.contains("judged by")
-                 || line.contains("select") {
-                break
-            }
-            // The pending call, e.g. "bash: git status --short" or
-            // "read: {\"path\":\"…\"}". Take the first such line before options.
-            if command.isEmpty, options.isEmpty, let prefix = callPrefix,
-               line.hasPrefix(prefix) {
-                command = String(line.dropFirst(prefix.count)).trimmingCharacters(in: .whitespaces)
-            }
+            // First non-blank, non-separator, non-option line above the options
+            // ends the block.
+            break
         }
-        guard options.count >= 2 else { return nil }
-        return GuardianPrompt(
-            tool: tool, command: command, options: options, selectedIndex: selectedIndex)
+        guard optionRows.count >= 2 else { return nil }
+        optionRows.reverse()
+        let options = optionRows.map { $0.label }
+        let selectedIndex = optionRows.firstIndex { $0.selected } ?? 0
+
+        // Guard sanity: the option set must look like a guard prompt (an Allow
+        // and a Deny), not an arbitrary radio list that happens to precede a
+        // "navigate/select/cancel" line.
+        let lower = options.map { $0.lowercased() }
+        guard lower.contains(where: { $0.hasPrefix("allow") }),
+              lower.contains(where: { $0.hasPrefix("deny") }) else { return nil }
+
+        // Title: nearest non-blank, non-separator, non-marker line above the
+        // first option. This is the "<tool>: <args>" pending call or the prose
+        // question (e.g. "The agent wants to load the skill ...").
+        var title = ""
+        var j = optionRows[0].index - 1
+        while j >= 0 {
+            let line = normalize(lines[j])
+            if line.isEmpty || isSeparatorLine(line) { j -= 1; continue }
+            if line.contains(where: { $0.isLetter || $0.isNumber }) {
+                title = line
+            }
+            break
+        }
+        return GuardianPrompt(title: title, options: options, selectedIndex: selectedIndex)
+    }
+
+    /// True for a horizontal rule / box border line (only box-drawing/dash chrome).
+    private static func isSeparatorLine(_ line: String) -> Bool {
+        !line.isEmpty && line.allSatisfy { "\u{2500}\u{2502}\u{2501}\u{2503}\u{256d}\u{256e}\u{2570}\u{256f}\u{251c}\u{2524}-_ ".contains($0) }
     }
 
     // Port of detect_approval_options (relay/herdr_relay.py:437-443).

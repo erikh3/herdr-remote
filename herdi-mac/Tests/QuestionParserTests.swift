@@ -298,8 +298,7 @@ expect(descSubs.last?.options.first { $0.label == "Cache" }?.description == "in-
 if let guardian = loadFixture("live_guardian.txt") {
     let g = QuestionParser.detectGuardianPrompt(guardian)
     expect(g != nil, "live_guardian detected as guardian prompt")
-    expect(g?.tool == "bash", "live_guardian tool is bash")
-    expect(g?.command == "cat /etc/passwd", "live_guardian command captured")
+    expect(g?.title == "bash: cat /etc/passwd", "live_guardian title is the bash call")
     expect(g?.options == ["Allow once", "Allow this exact call this session",
                           "Deny (recommended)", "Deny (type your own)"],
            "live_guardian option labels verbatim")
@@ -309,18 +308,37 @@ if let guardian = loadFixture("live_guardian.txt") {
 } else {
     print("skip: live_guardian.txt not captured")
 }
-// The pending call for a non-bash tool is a "<tool>: <args>" line below header.
+// Non-bash tool: title is the "<tool>: <args>" pending-call line.
 if let guardianRead = loadFixture("live_guardian_read.txt") {
     let g = QuestionParser.detectGuardianPrompt(guardianRead)
     expect(g != nil, "live_guardian_read detected as guardian prompt")
-    expect(g?.tool == "read", "live_guardian_read tool is read")
-    expect(g?.command.contains("configure-artifactory/action.yaml") == true,
-           "live_guardian_read command captured from tool-call line")
+    expect(g?.title.hasPrefix("read: ") == true, "live_guardian_read title is the read call")
+    expect(g?.title.contains("configure-artifactory/action.yaml") == true,
+           "live_guardian_read title captured from tool-call line")
     expect(g?.options.count == 4, "live_guardian_read has 4 options")
     expect(g?.selectedIndex == 2, "live_guardian_read cursor on Deny (recommended)")
 } else {
     print("skip: live_guardian_read.txt not captured")
 }
+// Skill-load approval: no "waiting to approve" header, prose title, 3 options.
+let GUARDIAN_SKILL = """
+ The agent wants to load the skill "pull-request" into context.
+
+─────────────────────────────────────────────
+\u{f10c} Allow
+\u{f10c} Deny
+\u{f10c} Deny (type your own)
+─────────────────────────────────────────────
+
+ up/down navigate  enter select  esc cancel   ·   loading a skill is read-only, no host risk
+"""
+let gs = QuestionParser.detectGuardianPrompt(GUARDIAN_SKILL)
+expect(gs != nil, "skill-load guardian prompt detected without a header")
+expect(gs?.title == "The agent wants to load the skill \"pull-request\" into context.",
+       "skill-load title is the prose question")
+expect(gs?.options == ["Allow", "Deny", "Deny (type your own)"],
+       "skill-load options verbatim")
+expect(gs?.selectedIndex == 0, "skill-load cursor on Allow")
 // A normal ask question must not be misdetected as a guardian prompt.
 expect(QuestionParser.detectGuardianPrompt(ASK_SCREEN) == nil,
        "detectGuardianPrompt nil for a normal ask question")
