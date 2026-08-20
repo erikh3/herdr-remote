@@ -309,6 +309,18 @@ if let guardian = loadFixture("live_guardian.txt") {
 } else {
     print("skip: live_guardian.txt not captured")
 }
+// The pending call for a non-bash tool is a "<tool>: <args>" line below header.
+if let guardianRead = loadFixture("live_guardian_read.txt") {
+    let g = QuestionParser.detectGuardianPrompt(guardianRead)
+    expect(g != nil, "live_guardian_read detected as guardian prompt")
+    expect(g?.tool == "read", "live_guardian_read tool is read")
+    expect(g?.command.contains("configure-artifactory/action.yaml") == true,
+           "live_guardian_read command captured from tool-call line")
+    expect(g?.options.count == 4, "live_guardian_read has 4 options")
+    expect(g?.selectedIndex == 2, "live_guardian_read cursor on Deny (recommended)")
+} else {
+    print("skip: live_guardian_read.txt not captured")
+}
 // A normal ask question must not be misdetected as a guardian prompt.
 expect(QuestionParser.detectGuardianPrompt(ASK_SCREEN) == nil,
        "detectGuardianPrompt nil for a normal ask question")

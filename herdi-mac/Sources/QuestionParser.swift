@@ -211,8 +211,9 @@ enum QuestionParser {
     /// Detect omp's permission-guard approval prompt. Distinct from an `ask`
     /// question: fixed Allow/Deny options (no "Other (type your own)"), a
     /// "Permission guard: waiting for you to approve <tool>" header, and the
-    /// pending call shown in a box above. Options render flush to the box border
-    /// with a radio marker; the selected row uses the filled radio glyph.
+    /// pending call rendered below the header as a "<tool>: <args>" line.
+    /// Options render flush to the box border with a radio marker; the selected
+    /// row uses the filled radio glyph.
     static func detectGuardianPrompt(_ text: String) -> GuardianPrompt? {
         let lines = text.components(separatedBy: "\n")
         let waitMarker = "Permission guard: waiting for you to approve "
@@ -229,29 +230,31 @@ enum QuestionParser {
         }
         guard let start = headerIndex else { return nil }
 
-        // Pending call: nearest "$ <cmd>" line in the box just above the header.
+        // Below the header omp shows the guard's rationale, then the pending call
+        // as a "<tool>: <args>" line, then the options. Capture the pending call
+        // and the options in one downward pass.
         var command = ""
-        for i in stride(from: start - 1, through: max(0, start - 8), by: -1) {
-            let line = normalize(lines[i])
-            if line.hasPrefix("$ ") {
-                command = String(line.dropFirst(2)).trimmingCharacters(in: .whitespaces)
-                break
-            }
-        }
-
-        // Options: matchOption rows below the header, until the footer.
         var options: [String] = []
         var selectedIndex = 0
+        let callPrefix = tool.isEmpty ? nil : "\(tool):"
         for raw in lines[(start + 1)...] {
             let line = normalize(raw)
             if line.isEmpty { continue }
             if let m = matchOption(line) {
                 if selectedMarkers.contains(m.marker) { selectedIndex = options.count }
                 options.append(m.label)
-            } else if !options.isEmpty,
-                      line.contains("navigate") || line.contains("judged by")
-                        || line.contains("select") {
+                continue
+            }
+            if !options.isEmpty,
+               line.contains("navigate") || line.contains("judged by")
+                 || line.contains("select") {
                 break
+            }
+            // The pending call, e.g. "bash: git status --short" or
+            // "read: {\"path\":\"…\"}". Take the first such line before options.
+            if command.isEmpty, options.isEmpty, let prefix = callPrefix,
+               line.hasPrefix(prefix) {
+                command = String(line.dropFirst(prefix.count)).trimmingCharacters(in: .whitespaces)
             }
         }
         guard options.count >= 2 else { return nil }

@@ -280,9 +280,14 @@ final class RelayConnection {
             if let guardian = QuestionParser.detectGuardianPrompt(raw) {
                 let gPromptId = QuestionParser.promptId(
                     paneId: agent.id, content: "guard:\(guardian.tool):\(guardian.command)")
-                let displayPrompt = guardian.command.isEmpty
-                    ? "Approve \(guardian.tool)?"
-                    : "$ \(guardian.command)"
+                let displayPrompt: String
+                if guardian.command.isEmpty {
+                    displayPrompt = "Approve \(guardian.tool)?"
+                } else if guardian.tool == "bash" {
+                    displayPrompt = "$ \(guardian.command)"
+                } else {
+                    displayPrompt = "\(guardian.tool): \(guardian.command)"
+                }
                 DispatchQueue.main.async {
                     let changed = agent.promptId != gPromptId
                     agent.prompt = displayPrompt

@@ -1,0 +1,60 @@
+ tools-github-mcp/get_file_contents
+successfully downloaded text file (SHA: e9c581ec3a290cbc94ed47980120379c0fb25e49)
+
+[Resource: repo://signavio/shared-workflows/sha/cd4c09fc4d87068dbb8c0674b4f78ca39f84a936/contents/.github/workflows/additional-tests.yml]
+name: Run additional tests
+… 296 more lines ⟨Ctrl+O: Expand⟩
+
+╭─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ $ cd ~/Work/pi-etl-automated-tests-ktlint && git status --short                                                                                                         │
+├─── Output ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ (no output)                                                                                                                                                             │
+│ ⟨Wall: 0.22s | Timeout: 300s⟩                                                                                                                                           │
+╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+╭───  Todo 7 tasks ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ I. Research  1/2                                                                                                                                                        │
+│   ├─  Choose isolated implementation branch                                                                                                                            │
+│   └─  Map automated-tests ktlint CI flow                                                                                                                               │
+│ II. Implementation  0/3                                                                                                                                                 │
+│ III. Verification  0/2                                                                                                                                                  │
+╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ Pinned SGPP v3.5.0 is older than bridge-v2's workflow: its postAdditionalTests lacks always(), so the previous workaround would still skip publishing. Using a standalone
+ ktlint job instead: Gradle may fail, but a following if: always() publisher remains in the same job and runs reliably.
+
+  Read (2)
+   ├─  ~/Work/pi-etl-automated-tests-ktlint/.github/actions/configure-gradle/action.yaml
+   └─  ~/Work/pi-etl-automated-tests-ktlint/.github/actions/configure-artifactory/action.yaml
+
+  Grep: configure-gradle|configure-artifactory|PIPER_VAULT|vault-secrets in /Users/I589812/Work/pi-etl-automated-tests-ktlint/.github/workflows
+
+ Todo done Research
+
+ Todos · 1/3
+  ├─ I. Research · 1/2
+  │  ├─  Choose isolated implementation branch
+  │  └─  Map automated-tests ktlint CI flow
+  ├─ II. Implementation · 0/3
+  └─ III. Verification · 0/2
+
+ ⠏ Permission guard: waiting for you to approve read
+
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ The read operation accesses a file outside the current workspace (/Users/I589812/Work/pi-etl-bridge-v2), and the user's instruction to "implement ktlint report in CI"
+ does not explicitly authorize reading from the adjacent pi-etl-automated-tests-ktlint repository.
+
+ read: {"path":"/Users/I589812/Work/pi-etl-automated-tests-ktlint/.github/actions/configure-artifactory/action.yaml"}
+
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+│ Allow once                                                                                                                                                             │
+│ Allow this exact call this session                                                                                                                                     │
+│ Deny (recommended)                                                                                                                                                     │
+│ Deny (type your own)                                                                                                                                                   │
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ up/down navigate  enter select  esc cancel   ·   ↳ judged by hai-proxy/anthropic--claude-4.5-haiku (confidence 0.85)
+
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                                                                                    INSERT
