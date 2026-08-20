@@ -257,18 +257,50 @@ enum QuestionParser {
         guard lower.contains(where: { $0.hasPrefix("allow") }),
               lower.contains(where: { $0.hasPrefix("deny") }) else { return nil }
 
-        // Title: nearest non-blank, non-separator, non-marker line above the
-        // first option. This is the "<tool>: <args>" pending call or the prose
-        // question (e.g. "The agent wants to load the skill ...").
+        // Tool name from the "waiting to approve <tool>" header, if present.
+        // Robust against truncated/wrapped arg lines that would otherwise be
+        // mistaken for the title.
+        let waitMarker = "waiting for you to approve "
+        var headerTool: String? = nil
+        for k in stride(from: optionRows[0].index - 1, through: 0, by: -1) {
+            let line = normalize(lines[k])
+            if let r = line.range(of: waitMarker) {
+                headerTool = String(line[r.upperBound...]).trimmingCharacters(in: .whitespaces)
+                break
+            }
+        }
+
+        // Title: prefer the pending-call line that STARTS the tool call
+        // ("<tool>: <args>"), scanning the block between the options and the
+        // nearest separator/blank above. This skips wrapped-arg continuation
+        // lines. Fall back to the nearest prose line (skill-load variant).
         var title = ""
+        var firstProse = ""
         var j = optionRows[0].index - 1
         while j >= 0 {
             let line = normalize(lines[j])
-            if line.isEmpty || isSeparatorLine(line) { j -= 1; continue }
-            if line.contains(where: { $0.isLetter || $0.isNumber }) {
-                title = line
+            if line.isEmpty || isSeparatorLine(line) {
+                // Stop at the blank/separator that opens the block, but only once
+                // we've seen content (so a call spanning wrapped lines is covered).
+                if !firstProse.isEmpty || !title.isEmpty { break }
+                j -= 1
+                continue
             }
-            break
+            let callStart: Bool
+            if let tool = headerTool {
+                callStart = line.hasPrefix("\(tool):") || line.hasPrefix(tool)
+            } else {
+                // "<identifier>: " prefix marks a tool call line.
+                callStart = line.range(of: #"^[\w./-]+:\s"#, options: .regularExpression) != nil
+            }
+            if callStart { title = line; break }
+            if line.contains(where: { $0.isLetter || $0.isNumber }) { firstProse = line }
+            j -= 1
+        }
+        if title.isEmpty {
+            // No explicit tool-call line: use header tool name if we have one,
+            // else the nearest prose line (skill-load / other approvals).
+            title = headerTool ?? firstProse
         }
         return GuardianPrompt(title: title, options: options, selectedIndex: selectedIndex)
     }

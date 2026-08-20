@@ -739,28 +739,66 @@ final class RelayConnection {
     private func runHerdrRaw(_ args: [String]) -> String { runHerdrChecked(args).output }
 
     /// Turn a raw guard title into a readable prompt. Tool calls arrive as
-    /// "<tool>: <args>"; when the args are a JSON object we surface the most
-    /// meaningful field (path/command/pattern/url/file) as "<tool> <value>"
-    /// instead of dumping raw JSON. bash calls render as "$ <command>". Prose
-    /// titles (e.g. skill loads) pass through unchanged.
+    /// "<tool>: <args>"; surface a friendly tool name plus the most meaningful
+    /// arg (command/pattern/query/url/path). bash renders as "$ <command>".
+    /// Prose titles (e.g. skill loads) pass through unchanged. Robust to omp's
+    /// truncated/wrapped JSON args (regex-extracts a field when parsing fails).
     private func guardianDisplayTitle(_ title: String) -> String {
         if title.isEmpty { return "Approve this action?" }
         guard let colon = title.firstIndex(of: ":") else { return title }
-        let tool = String(title[..<colon])
+        let rawTool = String(title[..<colon])
         let rest = title[title.index(after: colon)...].trimmingCharacters(in: .whitespaces)
-        if tool == "bash" { return "$ \(rest)" }
-        // Non-JSON args: show "tool rest" plainly.
-        guard rest.hasPrefix("{"),
-              let data = rest.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return rest.isEmpty ? tool : "\(tool) \(rest)"
-        }
+        if rawTool == "bash" { return "$ \(rest)" }
+        let tool = friendlyToolName(rawTool)
+        guard !rest.isEmpty else { return tool }
         let preferred = ["command", "cmd", "pattern", "query", "url",
                          "path", "file", "file_path"]
-        let value = preferred.compactMap { obj[$0] as? String }.first
-            ?? obj.values.compactMap { $0 as? String }.first
-        if let value { return "\(tool) \(value)" }
+        // Full JSON parse first; fall back to regex for truncated/wrapped args.
+        if rest.hasPrefix("{"), let data = rest.data(using: .utf8),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            let value = preferred.compactMap { obj[$0] as? String }.first
+                ?? obj.values.compactMap { $0 as? String }.first
+            if let value { return "\(tool) \(value)" }
+        } else if rest.hasPrefix("{") {
+            for key in preferred {
+                if let v = firstJSONStringValue(forKey: key, in: rest) {
+                    return "\(tool) \(v)"
+                }
+            }
+            // Truncated JSON with no recognized field: just the tool name.
+            return tool
+        }
         return "\(tool) \(rest)"
+    }
+
+    /// "mcp__tools_github_mcp_update_pull_request" -> "update pull request".
+    /// Non-MCP tool names pass through unchanged.
+    private func friendlyToolName(_ tool: String) -> String {
+        guard tool.hasPrefix("mcp__") else { return tool }
+        // Drop the "mcp__<server>_" prefix, keep the trailing action verb.
+        let body = String(tool.dropFirst("mcp__".count))
+        // Heuristic: the action is the last 2-4 underscore segments; strip the
+        // known server prefixes (tools_github_mcp, sap_jira, …) by taking the
+        // segment run after the last occurrence of "mcp" if present.
+        let segments = body.split(separator: "_").map(String.init)
+        let action: [String]
+        if let lastMcp = segments.lastIndex(of: "mcp") {
+            action = Array(segments[(lastMcp + 1)...])
+        } else {
+            action = segments
+        }
+        let name = action.joined(separator: " ")
+        return name.isEmpty ? tool : name
+    }
+
+    /// Regex-extract the first string value for a JSON key from a possibly
+    /// truncated/escaped args string. Returns nil if not found.
+    private func firstJSONStringValue(forKey key: String, in json: String) -> String? {
+        let pattern = "\"\(key)\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\""
+        guard let re = try? NSRegularExpression(pattern: pattern),
+              let m = re.firstMatch(in: json, range: NSRange(json.startIndex..., in: json)),
+              let r = Range(m.range(at: 1), in: json) else { return nil }
+        return String(json[r])
     }
 
     /// Answer a permission-guard prompt: re-read the live widget, navigate the

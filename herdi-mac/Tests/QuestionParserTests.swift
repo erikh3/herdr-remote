@@ -339,6 +339,31 @@ expect(gs?.title == "The agent wants to load the skill \"pull-request\" into con
 expect(gs?.options == ["Allow", "Deny", "Deny (type your own)"],
        "skill-load options verbatim")
 expect(gs?.selectedIndex == 0, "skill-load cursor on Allow")
+
+// MCP call with truncated/wrapped JSON args: the title must be the tool-call
+// start line, not a wrapped-arg continuation ("SAP-allowli...(truncated)").
+let GUARDIAN_MCP = """
+ ⡇ Permission guard: waiting for you to approve mcp__tools_github_mcp_update_pull_request
+
+ User's recent instructions were to check PR files, not update descriptions.
+
+ mcp__tools_github_mcp_update_pull_request: {"owner":"signavio","repo":"pi-etl","pullNumber":734,"body":"## Summary
+ SAP-allowli...(truncated)
+─────────────────────────────────────────────
+\u{f10c} Allow once
+\u{f10c} Allow this exact call this session
+\u{f192} Deny (recommended)
+\u{f10c} Deny (type your own)
+─────────────────────────────────────────────
+
+ up/down navigate  enter select  esc cancel   ·   judged by hai-proxy
+"""
+let gm = QuestionParser.detectGuardianPrompt(GUARDIAN_MCP)
+expect(gm != nil, "MCP guardian prompt detected")
+expect(gm?.title.hasPrefix("mcp__tools_github_mcp_update_pull_request:") == true,
+       "MCP title is the tool-call start line, not the wrapped tail")
+expect(gm?.selectedIndex == 2, "MCP cursor on Deny (recommended)")
+expect(gm?.options.count == 4, "MCP has 4 options")
 // A normal ask question must not be misdetected as a guardian prompt.
 expect(QuestionParser.detectGuardianPrompt(ASK_SCREEN) == nil,
        "detectGuardianPrompt nil for a normal ask question")
